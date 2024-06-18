@@ -1,5 +1,5 @@
 [package]
-name = "sistema_de_votacion_electronica_con_blockchain"
+name = "sistema_votacion"
 version = "0.1.0"
 authors = ["[your_name] <[your_email]>"]
 edition = "2021"

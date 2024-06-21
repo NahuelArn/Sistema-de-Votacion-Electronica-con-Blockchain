@@ -29,7 +29,7 @@ mod sistema_votacion
         elecciones_finiquitadas: Vec<Eleccion>,
         elecciones_conteo_id: u64,
 
-        resultados: Vec<ResultadosEleccion>,
+        resultados: Vec<ResultadosEleccion>, // Prefiero que esté en la elección pero para plantear
 
         peticiones_registro: Vec<Usuario> // Peticiones en espera de aprobación
     }
@@ -146,7 +146,7 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_elecciones_actuales(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema> 
         {
-            self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios aprobados pueden acceder a la lista de elecciones.".to_owned())?;
+            self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
             Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
         }
 
@@ -361,6 +361,17 @@ mod sistema_votacion
         fn es_admin(&self, caller_id: AccountId) -> bool { caller_id == self.admin_id }
 
 
+        fn validar_caller_como_admin_o_usuario_aprobado(&self, caller_id: AccountId) -> Result<(), ErrorSistema>
+        {
+            if self.es_admin(caller_id) { return Ok(()) }
+
+            return match self.validar_usuario(caller_id) {
+                Ok(_) => Ok(()),
+                Err(e) => Err( e )
+            }
+        }
+
+
         fn validar_caller_como_usuario_aprobado(&self, caller_id: AccountId, admin_err_msg: String) -> Result<Usuario, ErrorSistema>
         {
             if self.es_admin(caller_id) { return Err( ErrorSistema::AccionUnicaDeUsuarios { msg: admin_err_msg } ); }
@@ -484,7 +495,7 @@ mod sistema_votacion
 
             if estado_buscado == estado_eleccion { return Ok(()); }
 
-            return match estado_buscado {
+            return match estado_eleccion {
                 EstadoEleccion::PeriodoInscripcion => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoInscripcion { msg: "La elección ingresada se encuentra en período de inscripción.".to_owned() } } ),
                 EstadoEleccion::PeriodoVotacion    => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoVotacion    { msg: "La elección ingresada se encuentra en período de votación.".to_owned() } } ),
                 EstadoEleccion::Cerrada            => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionFinalizada           { msg: "La elección ingresada se encuentra finiquitada.".to_owned() } } ),

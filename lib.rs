@@ -29,8 +29,6 @@ mod sistema_votacion
         elecciones_finiquitadas: Vec<Eleccion>,
         elecciones_conteo_id: u64,
 
-        resultados: Vec<ResultadosEleccion>, // Prefiero que esté en la elección pero para plantear
-
         peticiones_registro: Vec<Usuario> // Peticiones en espera de aprobación
     }
 
@@ -56,7 +54,6 @@ mod sistema_votacion
                 elecciones: Vec::new(),
                 elecciones_finiquitadas: Vec::new(),
                 elecciones_conteo_id: 0,
-                resultados: Vec::new(),
                 peticiones_registro: Vec::new()
             }
         }
@@ -153,8 +150,6 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver el historial de elecciones.".to_owned())?;
-
             let timestamp = Self::env().block_timestamp();
 
             let elecciones = self.clonar_elecciones_historicas_a_interfaz(timestamp);
@@ -583,6 +578,7 @@ mod sistema_votacion
         RepresentacionLimiteAlcanzada { msg: String },
 
         ErrorDeEleccion { error: ErrorEleccion },
+
     }
 
 
@@ -640,8 +636,6 @@ mod sistema_votacion
             )
         }
     }
-
-
 
 
     #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -760,7 +754,7 @@ mod sistema_votacion
     {
         candidato_nombre: String,
         candidato_dni: String,
-        votos_recaudados: u64,
+        votos_recaudados: u64
     }
 
 
@@ -883,14 +877,7 @@ mod sistema_votacion
         {
             return 0;
             /*
-            Utc.with_ymd_and_hms(
-                self.año as i32, 
-                self.mes as u32, 
-                self.mes as u32, 
-                self.hora as u32,
-                self.min as u32,
-                self.seg as u32
-            )
+            
             .unwrap() // Me doy el lujo de hacer unwrap debido a que ya efectué todas las validaciones necesarias al momento del "Fecha::new()"
             .timestamp() as u64
             */

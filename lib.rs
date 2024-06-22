@@ -1,10 +1,12 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 
-// El código obvio está incompleto, pero lo subo por las dudas para que esté en la nube
+// Falta conteo, test, reporte, fecha(conversión y validación), documentación
 
-
-
+// Maxi: Conteo, fecha,
+// Tobi: Test,
+// Nahuel: Reporte, ¿doc?,
+// Dante: Ayuda
 
 
 #[ink::contract]
@@ -827,7 +829,7 @@ mod sistema_votacion
             //Ok( fecha )
         }    
 
-        /*
+        
         fn validar_fecha(&self) -> Result<(), ErrorFecha>
         {
             let meses = Self::get_meses_del_año(self.año);
@@ -869,7 +871,7 @@ mod sistema_votacion
         fn es_bisiesto(año: u32) -> bool {
             año % 4 == 0 && (año % 100 != 0 || año % 400 == 0)
         }
-        */
+        
 
 
 

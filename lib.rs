@@ -69,7 +69,7 @@ mod sistema_votacion
             self.consultar_inexistencia_usuario_en_sistema(caller_id)?;
         
             let user = Usuario::new(caller_id, user_nombre, user_dni);
-            self.peticiones_registro.push(user);
+            self.registrar_en_cola_de_sistema(user);
 
             Ok(())
         }
@@ -97,12 +97,11 @@ mod sistema_votacion
 
 
         #[ink(message)]
-        pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId) -> Result<(), ErrorSistema>
+        pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede delegarle su rol a otra cuenta.".to_owned())?;
 
-            // Comprobar si el nuevo admin está en cola de aprobación,
-            // en ese caso, aprobarlo instantáneamente.
+            self.corregir_estado_nuevo_admin(nuevo_admin_acc_id, nuevo_admin_nombre, nuevo_admin_dni);
 
             self.admin_id = nuevo_admin_acc_id;
             Ok(())
@@ -234,19 +233,29 @@ mod sistema_votacion
 
         fn aprobar_usuario(&mut self, usuario_account_id: AccountId)
         {
-            for i in 0 .. self.peticiones_registro.len()
-            {
-                if self.peticiones_registro[i].account_id == usuario_account_id
-                {
-                    let user = self.peticiones_registro.remove(i);
-                    self.usuarios_registados.push(user);
-                    break;
-                }
-            }
+            let index = self.get_usuario_en_peticiones_del_sistema(usuario_account_id);
+            let user = self.peticiones_registro.remove(index.unwrap()); // Unwrap porque ya sé que existe en el vec
+            self.usuarios_registados.push(user);
         }
 
 
+        fn registrar_en_cola_de_sistema(&mut self, user: Usuario) {
+            self.peticiones_registro.push(user);
+        }
 
+
+        fn corregir_estado_nuevo_admin(&mut self, new_admin_id: AccountId, new_admin_nombre: String, new_admin_dni: String)
+        {
+            if self.get_usuario_registrado_en_sistema(new_admin_id).is_some() { return; }
+
+            if self.get_usuario_en_peticiones_del_sistema(new_admin_id).is_none()
+            {
+                let new_user = Usuario::new(new_admin_id, new_admin_nombre, new_admin_dni);
+                self.registrar_en_cola_de_sistema(new_user);
+            }
+
+            self.aprobar_usuario(new_admin_id);
+        }
 
 
 
@@ -306,22 +315,18 @@ mod sistema_votacion
             vec
         }
 
+
         fn aprobar_candidato(&mut self, eleccion_index: usize, candidato_id: AccountId) -> Result<(), ErrorSistema>
         {
-            let e = &mut self.elecciones[eleccion_index];
-
-            for i in 0 .. e.peticiones_candidatos.len()
+            if let Some(index) = self.get_usuario_en_peticiones_del_sistema(candidato_id)
             {
-                if e.peticiones_candidatos[i].account_id == candidato_id {
-                    
-                    e.candidatos_aprobados.push( e.peticiones_candidatos.remove(i) );
+                let e = &mut self.elecciones[eleccion_index];
+                e.candidatos_aprobados.push( e.peticiones_candidatos.remove(index) );
 
-                    return Ok(());
-                }
+                return Ok(());
             }
 
-
-            return match e.candidatos_aprobados.iter().any(|c| c.account_id == candidato_id) {
+            return match self.elecciones[eleccion_index].candidatos_aprobados.iter().any(|c| c.account_id == candidato_id) {
                 true => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El AccountId del candidato ingresado ya está aprobado en la elección.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El AccountId del candidato ingresado no existe ni en las peticiones a candidato ni en los candidatos aprobados.".to_owned() } } )
             }
@@ -418,14 +423,29 @@ mod sistema_votacion
         }
 
 
+        fn get_usuario_registrado_en_sistema(&self, user_id: AccountId) -> Option<usize>
+        {
+            for i in 0 .. self.usuarios_registados.len() {
+                if self.usuarios_registados[i].account_id == user_id { return Some(i); }
+            }
+
+            None
+        }
+
+
+        fn get_usuario_en_peticiones_del_sistema(&self, user_id: AccountId) -> Option<usize>
+        {
+            for i in 0 .. self.peticiones_registro.len() {
+                if self.peticiones_registro[i].account_id == user_id { return Some(i); }
+            }
+
+            None
+        }
+
+
         fn validar_usuario_en_sistema(&self, caller_id: AccountId) -> Result<usize, ErrorSistema>
         {
-            for i in 0 .. self.usuarios_registados.len()
-            {
-                if self.usuarios_registados[i].account_id == caller_id {
-                    return Ok(i);
-                }
-            }
+            if let Some(index) = self.get_usuario_registrado_en_sistema(caller_id) { return Ok(index); }
 
             return match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
                 true =>  Err( ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_owned() } ),

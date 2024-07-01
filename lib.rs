@@ -22,7 +22,7 @@ mod sistema_votacion
     #[ink(storage)]
     pub struct SistemaVotacion
     {
-        admin_id: AccountId,
+        pub admin_id: AccountId,
         usuarios_registados: Vec<Usuario>, // Usuarios ya aprobados
 
         elecciones: Vec<Eleccion>,
@@ -641,7 +641,7 @@ mod sistema_votacion
 
 
 
-    #[derive(Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorSistema
     {
         UsuarioYaRegistrado { msg: String },
@@ -774,7 +774,7 @@ mod sistema_votacion
     pub enum EstadoEleccion { PeriodoInscripcion, PeriodoVotacion, Cerrada }
 
 
-    #[derive(Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorEleccion
     {
         NoExisteEleccion { msg: String },
@@ -998,5 +998,26 @@ mod sistema_votacion
         HoraInvalida { msg: String},
         MinInvalido { msg: String },
         SegInvalido { msg: String }
+    }
+}
+
+
+#[cfg(test)]
+mod tests{
+    use ink::env::call::FromAccountId;
+    use sistema_votacion::SistemaVotacion;
+    use sistema_votacion::ErrorSistema;
+
+    use super::*;
+
+    #[ink::test]
+    fn test_crear_sistema(){
+        let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+        assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_string() }),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
+        let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        ink::env::test::set_callee::<ink::env::DefaultEnvironment>(sistema.admin_id);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        assert_eq!(Ok(()),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
+        assert_eq!(Err(ErrorSistema::UsuarioYaRegistradoEnPeticiones { msg: "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_string() }),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
     }
 }

@@ -187,18 +187,20 @@ mod sistema_votacion
 
         //PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION//
         #[ink(message)]
-        pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_id: AccountId) -> Result<(), ErrorSistema>
+        pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar candidatos para las elecciones.".to_owned())?;
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+            let candidato_index = self.validar_candidato_en_pendientes(candidato_dni, eleccion_index)?;
 
-            self.aprobar_candidato(eleccion_index, candidato_id)
+            self.aprobar_candidato(candidato_index, eleccion_index);
+            Ok(())
         }
 
         //PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO//
         #[ink(message)]
-        pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_id: u8) -> Result<(), ErrorSistema>
+        pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
             let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden votar una elección.".to_owned())?;
 
@@ -206,9 +208,9 @@ mod sistema_votacion
 
             self.validar_votante_aprobado_en_eleccion(caller_user.account_id, eleccion_index)?;
 
-            if self.elecciones[eleccion_index].votos[candidato_id as usize].votos_recaudados.checked_add(1).is_none() { return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) }
-        
-            Ok(())
+            let candidato_index = self.validar_candidato_aprobado(candidato_dni, eleccion_index)?;
+
+            self.registrar_voto_a_candidato(candidato_index, eleccion_index)
         }
 
 
@@ -320,21 +322,28 @@ mod sistema_votacion
 
         //APRUEBA UN CANDIDATO PARA PARTICIPAR EN UNA ELECCION//
         //SI YA FUE APROBADO O NO EXISTE EN EL SISTEMA SE INFORMA//
-        fn aprobar_candidato(&mut self, eleccion_index: usize, candidato_id: AccountId) -> Result<(), ErrorSistema>
+        fn aprobar_candidato(&mut self, candidato_index: usize, eleccion_index: usize) 
         {
-            if let Some(index) = self.get_usuario_en_peticiones_del_sistema(candidato_id)
-            {
-                let e = &mut self.elecciones[eleccion_index];
-                e.candidatos_aprobados.push( e.peticiones_candidatos.remove(index) );
+            let e= &mut self.elecciones[eleccion_index];
 
-                return Ok(());
-            }
+            let candidato = e.peticiones_candidatos.remove(candidato_index);
+            e.candidatos_aprobados.push( candidato.clone() );
 
-            return match self.elecciones[eleccion_index].candidatos_aprobados.iter().any(|c| c.account_id == candidato_id) {
-                true => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El AccountId del candidato ingresado ya está aprobado en la elección.".to_owned() } } ),
-                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El AccountId del candidato ingresado no existe ni en las peticiones a candidato ni en los candidatos aprobados.".to_owned() } } )
-            }
+            let candidato_votos = CandidatoVotos::new(candidato.nombre, candidato.dni);
+            e.votos.push( candidato_votos );
         }
+
+        fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
+        {
+            if self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1).is_none() { 
+                return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) 
+            }
+             // (CREO) que si un candidato está en I posición del Vec de aprobados, siempre va a estar en I posicion del Vec de votos
+            // creo esto porque en el mismo proceso que apruebo un candidato (La función de arriba) pusheo el candidato a aprobados y también a votos, por ende creo que van a quedar estructuras idénticas con distintos tipo de datos
+
+            Ok(())
+        }
+    
 
 
 
@@ -579,7 +588,57 @@ mod sistema_votacion
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } } )
             }            
         }
+
+        //EL SISTEMA VALIDA QUE EL CANDIDATO A APROBAR ESTE EN LA LISTA DE CANDIDATOS PENDIENTES
+        //DE NO SER EL CASO LO INFORMA
+        fn validar_candidato_en_pendientes(&self, candidato_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
+        {
+            if let Some(index) = self.get_candidato_pendiente(candidato_dni.clone(), eleccion_index) { return Ok(index) }
+
+            return match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
+                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
+                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
+            }
+        }
+
+    
+        //EL SISTEMA VALIDA QUE EL CANDIDATO SE EN CUANTRE EN LA LISTA DE CANDIDATOS APROBADOS
+        //SI NO LO ESTA SE INFORMA
+        fn validar_candidato_aprobado(&self, candidato_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
+        {
+            if let Some(index) = self.get_candidato_aprobado(candidato_dni.clone(), eleccion_index) { return Ok(index) }
+
+            return match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
+                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoAprobado { msg: "El candidato ingresado está en espera de aprobación.".to_owned() } } ),
+                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
+            }
+        }
+
+
+        //EL SISTEMA BUSCA AL CANDIDATO APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
+        //SI NO ESTA DEVUELVE NONE
+        fn get_candidato_aprobado(&self, candidato_dni: String, eleccion_index: usize) -> Option<usize> 
+        {
+            for i in 0 .. self.elecciones[eleccion_index].candidatos_aprobados.len() {
+                if self.elecciones[eleccion_index].candidatos_aprobados[i].dni == candidato_dni { return Some(i); }
+            }
+
+            None
+        }
+
+        
+        //EL SISTEMA BUSCA A UN CANDIDATO EN LA LISTA DE CANDIDATOS PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
+        //SI NO ESTA DEVUELVE NONE
+        fn get_candidato_pendiente(&self, candidato_dni: String, eleccion_index: usize) -> Option<usize>  
+        {
+            for i in 0 .. self.elecciones[eleccion_index].candidatos_aprobados.len() {
+                if self.elecciones[eleccion_index].candidatos_aprobados[i].dni == candidato_dni { return Some(i); }
+            }
+
+            None
+        }
     }
+
 
 
     #[derive(Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -668,7 +727,7 @@ mod sistema_votacion
         fecha_inicio_interfaz: Fecha,
         fecha_cierre_interfaz: Fecha,
 
-        votos: Vec<CandidatoVotos>,  // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzada
+        votos: Vec<CandidatoVotos>,  // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzado
 
         candidatos_aprobados: Vec<Usuario>,
         peticiones_candidatos: Vec<Usuario>,
@@ -747,6 +806,7 @@ mod sistema_votacion
 
 
 
+
     //////////////////////////////// VOTOS Y RESULTADOS ////////////////////////////////
 
 
@@ -775,7 +835,12 @@ mod sistema_votacion
     }
 
 
-
+    impl CandidatoVotos
+    {
+        fn new(candidato_nombre: String, candidato_dni: String) -> Self {
+            CandidatoVotos { candidato_nombre, candidato_dni, votos_recaudados: 0 }
+        }
+    }
 
 
 
@@ -923,6 +988,7 @@ mod sistema_votacion
         }
         */
     }
+
 
     pub enum ErrorFecha
     {

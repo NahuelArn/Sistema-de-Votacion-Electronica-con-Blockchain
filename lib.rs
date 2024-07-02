@@ -22,7 +22,7 @@ mod sistema_votacion
     #[ink(storage)]
     pub struct SistemaVotacion
     {
-        pub admin_id: AccountId,
+        admin_id: AccountId,
         usuarios_registados: Vec<Usuario>, // Usuarios ya aprobados
 
         elecciones: Vec<Eleccion>,
@@ -65,6 +65,11 @@ mod sistema_votacion
         #[ink(message)]
         pub fn registrarse_en_sistema(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorSistema>
         {
+            self.registrarse_en_sistema_priv(user_nombre, user_dni)
+        }
+
+        fn registrarse_en_sistema_priv(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorSistema>
+        {
             let caller_id = Self::env().caller();
             self.consultar_inexistencia_usuario_en_sistema(caller_id)?;
         
@@ -78,6 +83,11 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_peticiones_de_registro_sistema(&self) -> Result<Vec<Usuario>, ErrorSistema> 
         {
+            self.get_peticiones_de_registro_sistema_priv()
+        }
+
+        fn get_peticiones_de_registro_sistema_priv(&self) -> Result<Vec<Usuario>, ErrorSistema> 
+        {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver las peticiones de registro.".to_owned())?;
 
             Ok( self.peticiones_registro.clone() )
@@ -86,6 +96,11 @@ mod sistema_votacion
         //LE PERMITE AL ADMIN VALIDAR A UN USUARIO EN EL SISTEMA//
         #[ink(message)]
         pub fn aprobar_usuario_sistema(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorSistema>
+        {
+            self.aprobar_usuario_sistema_priv(usuar_account_id)
+        }
+
+        fn aprobar_usuario_sistema_priv(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar peticiones de usuarios para registro.".to_owned())?;
             self.consultar_peticion_sistema(usuar_account_id)?;
@@ -98,6 +113,11 @@ mod sistema_votacion
         //LE PERMITE AL ADMIN TRASPASAR SU ROL A OTRO USUARIO//
         #[ink(message)]
         pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.delegar_admin_priv(nuevo_admin_acc_id, nuevo_admin_nombre, nuevo_admin_dni)
+        }
+
+        fn delegar_admin_priv(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede delegarle su rol a otra cuenta.".to_owned())?;
 
@@ -127,6 +147,11 @@ mod sistema_votacion
         #[ink(message)]
         pub fn crear_nueva_eleccion(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
         {
+            self.crear_nueva_eleccion_priv(cargo,fecha_inicio,fecha_cierre)
+        }
+
+        fn crear_nueva_eleccion_priv(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
+        {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
             
             self.check_add_elecciones_id()?;
@@ -145,6 +170,11 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_elecciones_actuales(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema> 
         {
+            self.get_elecciones_actuales_priv()
+        }
+
+        fn get_elecciones_actuales_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
+        {
             self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
             Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
         }
@@ -153,7 +183,12 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver el historial de elecciones.".to_owned())?;
+            self.get_elecciones_historial_priv()
+        }
+
+        fn get_elecciones_historial_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
+        {
+            self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
 
             let timestamp = Self::env().block_timestamp();
 
@@ -167,6 +202,11 @@ mod sistema_votacion
         #[ink(message)]
         pub fn registrarse_a_eleccion(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema> // Cómo identificar elección
         {
+            self.registrarse_a_eleccion_priv(eleccion_id, rol)
+        }
+
+        fn registrarse_a_eleccion_priv(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema>
+        {
             let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden registrarse a las elecciones.".to_owned())?;
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
@@ -178,16 +218,26 @@ mod sistema_votacion
         #[ink(message)]
         pub fn get_candidatos_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
         {
+            self.get_candidatos_pendientes_priv(eleccion_id)
+        }
+
+        fn get_candidatos_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned())?;
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
 
             Ok( self.elecciones[eleccion_index].peticiones_candidatos.clone() )
-        } 
+        }
 
         //PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION//
         #[ink(message)]
         pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.aprobar_candidato_eleccion_priv(eleccion_id, candidato_dni)
+        }
+
+        fn aprobar_candidato_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar candidatos para las elecciones.".to_owned())?;
 
@@ -201,6 +251,11 @@ mod sistema_votacion
         //PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO//
         #[ink(message)]
         pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.votar_eleccion_priv(eleccion_id, candidato_dni)
+        }
+
+        fn votar_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
             let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden votar una elección.".to_owned())?;
 
@@ -675,7 +730,7 @@ mod sistema_votacion
     //////////////////////////////// ELECCIONES ////////////////////////////////
 
 
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Clone, Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub struct EleccionInterfaz
     {
         eleccion_id: u64,
@@ -861,7 +916,7 @@ mod sistema_votacion
     pub enum Rol { Votante, Candidato }
 
 
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Clone, Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub struct Usuario
     {
         account_id: AccountId,
@@ -895,7 +950,7 @@ mod sistema_votacion
 
     ////////////////////////////// Fecha /////////////////////////////
 
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Clone, Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub struct Fecha { dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8 } // Año como unsigned debido a que sí o sí se tratarán fechas mayores a la actual
 
 
@@ -999,25 +1054,119 @@ mod sistema_votacion
         MinInvalido { msg: String },
         SegInvalido { msg: String }
     }
-}
 
+    #[cfg(test)]
+    mod tests{
 
-#[cfg(test)]
-mod tests{
-    use ink::env::call::FromAccountId;
-    use sistema_votacion::SistemaVotacion;
-    use sistema_votacion::ErrorSistema;
+        use super::*;
 
-    use super::*;
+        /////////////////TEST DEL SISTEMA (METODOS INK::MESSAGE)
+        #[ink::test]
+        fn test_sistema_registrar_validar(){
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_string() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(()),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
+            assert_eq!(Err(ErrorSistema::UsuarioYaRegistradoEnPeticiones { msg: "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_string() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede aprobar peticiones de usuarios para registro.".to_string()}),sistema.aprobar_usuario_sistema_priv(accounts.bob));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(()),sistema.aprobar_usuario_sistema_priv(accounts.bob));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema".to_owned() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+        }
 
-    #[ink::test]
-    fn test_crear_sistema(){
-        let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
-        assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_string() }),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
-        let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
-        ink::env::test::set_callee::<ink::env::DefaultEnvironment>(sistema.admin_id);
-        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-        assert_eq!(Ok(()),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
-        assert_eq!(Err(ErrorSistema::UsuarioYaRegistradoEnPeticiones { msg: "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_string() }),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
+        #[allow(unused)]
+        #[ink::test]
+        fn test_sistema_obtener_peticiones()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobais".to_string(), "43107333".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            sistema.registrarse_en_sistema_priv("alice".to_string(), "22222".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+            sistema.registrarse_en_sistema_priv("charlie".to_string(), "33333".to_string());
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos { msg: "Sólo el administrador puede ver las peticiones de registro.".to_string() }),sistema.get_peticiones_de_registro_sistema_priv());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(sistema.peticiones_registro.clone()),sistema.get_peticiones_de_registro_sistema_priv());
+        }
+
+        #[ink::test]
+        fn test_delegar_admin()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            assert_eq!(Ok(()),sistema.delegar_admin_priv(accounts.bob, "bob".to_string(), "12345".to_string()));
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede delegarle su rol a otra cuenta.".to_string()}),sistema.delegar_admin_priv(accounts.bob, "bob".to_string(), "12345".to_string()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(()),sistema.delegar_admin_priv(accounts.django, "tobias".to_string(), "43107333".to_string()));
+        }
+
+        /////////////////TEST ELECCIONES (METODOS INK::MESSAGE)
+        #[ink::test]
+        fn test_crear_eleccion()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            assert_eq!(Ok(()),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos { msg:"Sólo el administrador puede crear nuevas elecciones.".to_string()  }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            sistema.elecciones_conteo_id= 18446744073709551615;
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Err(ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_string() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+        }
+
+        #[allow(unused)]
+        #[ink::test]
+        fn test_get_elecciones()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
+            assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
+            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string() }),sistema.get_elecciones_actuales_priv());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema_priv(accounts.bob);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            assert_eq!(Err(ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_string() }),sistema.get_elecciones_actuales_priv());
+            //Se necesita testear las elecciones que ya terminaron, pero no esta el timestamp//
+        }
+
+        #[allow(unused)]
+        #[ink::test]
+        fn test_registrarse_eleccion()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
+            assert_eq!(Err(ErrorSistema::AccionUnicaDeUsuarios{msg:"Sólo los usuarios pueden registrarse a las elecciones.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
+            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            //faltan todos los test para los que se necesita que el timestamp este funcionando
+        }
     }
+
 }
+
+

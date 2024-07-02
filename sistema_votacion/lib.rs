@@ -96,7 +96,9 @@ mod sistema_votacion {
         }
 
         #[ink(message)]
-        pub fn delegar_admin(&mut self,nuevo_admin_acc_id: AccountId,
+        pub fn delegar_admin(
+            &mut self,
+            nuevo_admin_acc_id: AccountId,
             nuevo_admin_nombre: String,
             nuevo_admin_dni: String,
         ) -> Result<(), ErrorSistema> {
@@ -163,7 +165,41 @@ mod sistema_votacion {
 
             Ok(elecciones)
         }
+        #[ink(message)]
+        pub fn get_elecciones_terminadas_x(&self, id:u64) -> Vec<Usuario> {
+            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].candidatos_aprobados.clone();
+            elecciones_votantes
+        }
 
+        #[ink(message)]
+        pub fn get_participacion(&self) -> Vec<Informe> {
+            let mut cant_emit:u128;
+            let mut cant_total:u128;
+            let mut informes: Vec<Informe> = Vec::new();
+            
+            for eleccion in self.elecciones_finiquitadas.iter() {
+                cant_emit = 0;
+                for votos in eleccion.votos.iter() {
+                    cant_emit += votos.votos_recaudados as u128;
+                }
+                cant_total = eleccion.votantes_aprobados.len() as u128;
+                let porcentaje = (cant_emit * 100) / cant_total;
+                let informe = Informe::new(eleccion.eleccion_id, eleccion.cargo.clone(), cant_emit as u64, cant_total as u64, porcentaje);
+                informes.push(informe);
+            }
+            informes
+        }
+        #[ink(message)]
+        pub fn get_reporte_resultados(&self)-> Vec<CandidatoVotos>{
+            let mut votos: Vec<CandidatoVotos> = Vec::new();
+            for eleccion in self.elecciones_finiquitadas.iter(){
+                for voto in eleccion.votos.iter(){
+                    votos.push(voto.clone());
+                }
+            }
+            votos.sort_by(|a, b| b.votos_recaudados.cmp(&a.votos_recaudados));
+            votos
+        }
         #[ink(message)]
         pub fn registrarse_a_eleccion(
             &mut self,
@@ -757,6 +793,7 @@ mod sistema_votacion {
         AccionUnicaDeUsuarios { msg: String },
         RepresentacionLimiteAlcanzada { msg: String },
 
+        NoExisteEleccion { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
 
@@ -1078,5 +1115,27 @@ mod sistema_votacion {
         HoraInvalida { msg: String },
         MinInvalido { msg: String },
         SegInvalido { msg: String },
+    }
+
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct Informe{
+        eleccion_id: u64, // Número alto de representación para un futuro sustento
+        cargo: String,
+        votos_emitidos: u64,
+        votos_totales: u64,
+        porcentaje: u128,
+    }
+    impl Informe {
+        fn new(eleccion_id: u64, cargo: String, votos_emitidos: u64, votos_totales: u64, porcentaje: u128) -> Self {
+            Informe {
+                eleccion_id,
+                cargo,
+                votos_emitidos,
+                votos_totales,
+                porcentaje,
+            }
+        }
     }
 }

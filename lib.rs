@@ -61,7 +61,12 @@ mod sistema_votacion
             }
         }
 
-        //PERMITE QUE UN USUARIO SE REGISTRE EN LA COLA DE ESPERA DEL SISTEMA//
+        /// PERMITE QUE UN USUARIO SE REGISTRE EN LA COLA DE ESPERA DEL SISTEMA
+        /// Se le pasan por parametros el nombre del usuario y su DNI
+        /// Y toma como AccountId al id del usuario que llama a la funcion
+        /// La funcion retorna un Result<(), ErrorSistema>
+        /// los casos de error pueden ser si el usuario ya esta registrado en la cola de espera, si el usuario es el admin 
+        /// o si el usuario ya fue aprobado en el sistema, si no se cumple ninguna de esas condiciones el usuario se registra en el sistema 
         #[ink(message)]
         pub fn registrarse_en_sistema(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorSistema>
         {
@@ -79,7 +84,9 @@ mod sistema_votacion
             Ok(())
         }
 
-        //LE PERMITE AL ADMIN VER UNA LISTA DE TODOS LOS USUARIOS EN LA COLA DE ESPERA DEL SISTEMA//
+        ///LE PERMITE AL ADMIN VER UNA LISTA DE TODOS LOS USUARIOS EN LA COLA DE ESPERA DEL SISTEMA
+        /// La funcion no recibe parametros, y devuelve un Result<Vec<Usuario>,ErrorSistema>
+        /// Retorna un error siempre que el usuario que invoque la funcion no sea el admin
         #[ink(message)]
         pub fn get_peticiones_de_registro_sistema(&self) -> Result<Vec<Usuario>, ErrorSistema> 
         {
@@ -93,7 +100,12 @@ mod sistema_votacion
             Ok( self.peticiones_registro.clone() )
         }
 
-        //LE PERMITE AL ADMIN VALIDAR A UN USUARIO EN EL SISTEMA//
+        /// LE PERMITE AL ADMIN VALIDAR A UN USUARIO EN EL SISTEMA
+        /// La funcion recibe como parametro el AccountId de un usuario
+        /// Si quien invoca a la funcion es el admin, la funcion valida que el accountId por parametro este registrado en el sistema
+        /// de ser el caso el usuario queda validado para acceder a las funcionalidades del mismo
+        /// si la llamada la realiza un usuario no admin la funcion devuelve un ErrorSistema
+        /// si el accountId ya fue validado o no existe en el sistema la funcion tambien devuelve un ErrorSistema
         #[ink(message)]
         pub fn aprobar_usuario_sistema(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorSistema>
         {
@@ -110,7 +122,11 @@ mod sistema_votacion
             Ok(())
         }
 
-        //LE PERMITE AL ADMIN TRASPASAR SU ROL A OTRO USUARIO//
+        /// LE PERMITE AL ADMIN TRASPASAR SU ROL A OTRO USUARIO
+        /// La funcion recibe por parametros el AccountId, nombre y dni del nuevo admin y retorna un Result<(),ErrorSistema>
+        /// Si quien invoca la funcion es el admin la funcion registra al nuevo admin en caso de que no este registrado
+        /// y despues reemplaza el accountId del admin actual por el accountId enviado por parametro
+        /// La funcion retorna un ErrorSistema si el usuario que la invoca no es el admin
         #[ink(message)]
         pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
         {
@@ -143,7 +159,11 @@ mod sistema_votacion
 
         //////////////////// ELECCIONES ////////////////////
 
-        //LE PERMITE AL ADMIN CREAR UNA NUEVA ELECCION//
+        /// LE PERMITE AL ADMIN CREAR UNA NUEVA ELECCION
+        /// La funcion recibe por parametro el cargo, fecha de inicio y fecha de cierre para la eleccion y devuelve un Result<(), ErrorSistema>
+        /// Si el usuario que invoca la funcion es el admin, se valida el incremento a los id de eleccion para evitar desbordes, se crea la nueva 
+        /// eleccion y se agrega a la lista de elecciones actuales
+        /// Se devuelve un ErrorSistema si quien invoca la funcion no es el admin
         #[ink(message)]
         pub fn crear_nueva_eleccion(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
         {
@@ -166,7 +186,15 @@ mod sistema_votacion
             Ok(())
         }
 
-        //LE PERMITE A CUALQUIER USUARIO APROBADO ACCEDER A UNA LISTA DE LAS ELECCIONES EN CURSO//
+        /// LE PERMITE A CUALQUIER USUARIO APROBADO ACCEDER A UNA LISTA DE LAS ELECCIONES EN CURSO
+        /// 
+        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
+        /// 
+        /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones actuales en formato de interfaz y se retorna.
+        /// 
+        /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
+        /// 
+        /// ...
         #[ink(message)]
         pub fn get_elecciones_actuales(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema> 
         {
@@ -179,7 +207,14 @@ mod sistema_votacion
             Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
         }
 
-        //LE PERMITE AL ADMIN VER UNA LISTA DE TODAS LAS ELECCIONES, ¿TENDRIAN QUE PODER ACCEDER A ESTA FUNCIONALIDAD LOS USUARIOS ACREDITADOS?//
+        /// LE PERMITE A CUALQUIER USUARIO APROBADO VER UNA LISTA DE TODAS LAS ELECCIONES FINALIZADAS
+        /// 
+        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
+        /// 
+        /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones finalizadas en formato de interfaz y se retorna.
+        /// 
+        /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
+        /// ...
         #[ink(message)]
         pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
         {
@@ -198,7 +233,20 @@ mod sistema_votacion
             Ok( elecciones )
         }
     
-        //LE PERMITE A UN USUARIO ACREDITADO REGISTRARSE A UNA ELECCION//
+        /// LE PERMITE A UN USUARIO APROBADO REGISTRARSE A UNA ELECCION
+        /// 
+        /// 
+        /// 
+        /// La funcion recibe por parametro el id de la eleccion para registrarse, el Rol en el que quiere presentarse y retorna un Result<(),ErrorSistema>
+        /// 
+        /// Si quien invoca la funcion es un usuario aprobado en el sistema y el id corresponde a una eleccion valida en periodo de inscripcion,
+        /// el usuario que invoca la funcion es registrado a la espera de que el admin lo valide.
+        /// 
+        /// Si el admin invoca la funcion, el usuario que invoca la funcion no esta aprobado o no esta registrado la funcion devuelve un ErrorSistema.
+        /// 
+        /// La funcion tambien devuelve un ErrorSistema si el id de la eleccion no es valido o es de una eleccion que no esta en periodo de inscripcion.
+        /// 
+        /// ....
         #[ink(message)]
         pub fn registrarse_a_eleccion(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema> // Cómo identificar elección
         {
@@ -214,7 +262,25 @@ mod sistema_votacion
             return self.registrar_peticion_eleccion(caller_user, rol, eleccion_index);
         }
 
-        //PERMITE AL ADMIN RECUPERAR LA LISTA DE TODOS LOS CANDIDATOS PENDIENTES//
+        /// PERMITE AL ADMIN RECUPERAR LA LISTA DE TODOS LOS CANDIDATOS PENDIENTES
+        /// 
+        /// 
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion recibe el id de la eleccion de la que se quieren obtener los candidatos pendientes y retorna un Result<Vec<Usuario>,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// Se valida que el usuario que use la funcion sea el admin, si lo es se valida que el id de la eleccion corresponda a una eleccion calida en periodo de inscripcion
+        /// y se devuelve una lista de los candidatos pendientes a aprobacion en esa eleccion
+        /// 
+        /// #Errores
+        /// 
+        /// los casos de error de la funcion son cuando el usuario que la invoca no es el admin, cuando el id de la eleccion no es valido o cuando el id de la eleccion no 
+        /// corresponde a una eleccion en periodo de inscripcion
+        /// 
+        /// ... 
         #[ink(message)]
         pub fn get_candidatos_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
         {
@@ -230,7 +296,23 @@ mod sistema_votacion
             Ok( self.elecciones[eleccion_index].peticiones_candidatos.clone() )
         }
 
-        //PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION//
+        ///PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion recibe el id de la eleccion en la que se quiere aprobar un candidato y el dni del candidato a aprobar, retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// Se valida que el usuario que invoca a la funcion el admin, en ese caso se valida que el id de la eleccion sea valido y que el dni pertenezca a un candidato
+        /// esperando a ser validado en esta eleccion, si todas las condiciones se cumplen el usuario dueño de ese dni queda registrado como candidato en la eleccion
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error de la funcion se dan cuando el usuario que la invoca no es admin, cuando el id de eleccion no es valido o no pertenece a una eleccion en 
+        /// periodo de inscripcion y cuando el dni del candidato no pertenece a un usuario registrado en la eleccion o un usuario ya aprobado
+        /// 
+        /// .
         #[ink(message)]
         pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
@@ -248,7 +330,7 @@ mod sistema_votacion
             Ok(())
         }
 
-        //PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO//
+        /// PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO
         #[ink(message)]
         pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {

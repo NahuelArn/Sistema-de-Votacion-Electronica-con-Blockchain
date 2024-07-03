@@ -4,7 +4,8 @@
 mod reporte {
     use sistema_votacion::SistemaVotacionRef;
     use sistema_votacion::Usuario;
-    use sistema_votacion::Informe;
+    // use sistema_votacion::Informe;
+    use ink::prelude::string::String;
     use sistema_votacion::CandidatoVotos;
     use ink::prelude::vec::Vec; // Importa Vec // Importa la macro vec!
 
@@ -34,7 +35,25 @@ mod reporte {
 
         #[ink(message)]
         pub fn reporte_participacion(&mut self) -> Vec<Informe> {
-            self.sistema.get_participacion().clone()
+            let mut cant_emit:u128;
+            let mut cant_total:u128;
+            let mut informes: Vec<Informe> = Vec::new();
+            
+            for eleccion in self.sistema.get_elecciones_finiquitadas().iter() {
+                cant_emit = 0;
+                for votos in eleccion.get_eleccion_votos().iter() {
+                    cant_emit = cant_emit.checked_add(votos.get_votos_recaudados() as u128)
+                        .expect("Error: Overflow en la suma de votos.");
+                }
+                cant_total = eleccion.votantes_aprobados.len() as u128;
+                let porcentaje = cant_emit.checked_mul(100)
+                    .expect("Error: Overflow en la multiplicación.")
+                    .checked_div(cant_total)
+                    .expect("Error: División por cero.");
+                let informe = Informe::new(eleccion.get_id(), eleccion.get_cargo(), cant_emit as u64, cant_total as u64, porcentaje);
+                informes.push(informe);
+            }
+            informes
         }
         /*
         Reporte de Resultado:: Muestra el número de votos recibidos por cada candidato y
@@ -44,7 +63,37 @@ mod reporte {
          */
         #[ink(message)]
         pub fn reporte_resultado(&mut self) -> Vec<CandidatoVotos> {
-            self.sistema.get_reporte_resultados().clone()
+            // self.sistema.get_reporte_resultados().clone()
+            let mut votos: Vec<CandidatoVotos> = Vec::new();
+            for eleccion in self.sistema.get_elecciones_finiquitadas().iter() {
+                for voto in eleccion.get_eleccion_votos().iter() {
+                    votos.push(voto.clone());
+                }
+            }
+            votos.sort_by(|a, b| b.get_votos_recaudados().cmp(&a.get_votos_recaudados()));
+            votos
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct Informe{
+        eleccion_id: u64, // Número alto de representación para un futuro sustento
+        cargo: String,
+        votos_emitidos: u64,
+        votos_totales: u64,
+        porcentaje: u128,
+    }
+    impl Informe {
+        fn new(eleccion_id: u64, cargo: String, votos_emitidos: u64, votos_totales: u64, porcentaje: u128) -> Self {
+            Informe {
+                eleccion_id,
+                cargo,
+                votos_emitidos,
+                votos_totales,
+                porcentaje,
+            }
         }
     }
     

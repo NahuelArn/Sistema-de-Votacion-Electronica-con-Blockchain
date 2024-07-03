@@ -170,36 +170,50 @@ mod sistema_votacion {
             let elecciones_votantes = self.elecciones_finiquitadas[id as usize].candidatos_aprobados.clone();
             elecciones_votantes
         }
+        #[ink(message)]
+        pub fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion> {
+            self.elecciones_finiquitadas.clone()
+        }
+        // #[ink(message)]
+        // pub fn get_votos_de_una_eleccion(&self)-> Vec<CandidatoVotos>{
+        //     self.
+        // }
+        
+        // #[ink(message)]
+        // pub fn get_eleccion_votos()
 
-        #[ink(message)]
-        pub fn get_participacion(&self) -> Vec<Informe> {
-            let mut cant_emit:u128;
-            let mut cant_total:u128;
-            let mut informes: Vec<Informe> = Vec::new();
+
+        // #[ink(message)]
+        // pub fn get_participacion(&self) -> Vec<Informe> {
+        //     let mut cant_emit:u128;
+        //     let mut cant_total:u128;
+        //     let mut informes: Vec<Informe> = Vec::new();
             
-            for eleccion in self.elecciones_finiquitadas.iter() {
-                cant_emit = 0;
-                for votos in eleccion.votos.iter() {
-                    cant_emit += votos.votos_recaudados as u128;
-                }
-                cant_total = eleccion.votantes_aprobados.len() as u128;
-                let porcentaje = (cant_emit * 100) / cant_total;
-                let informe = Informe::new(eleccion.eleccion_id, eleccion.cargo.clone(), cant_emit as u64, cant_total as u64, porcentaje);
-                informes.push(informe);
-            }
-            informes
-        }
-        #[ink(message)]
-        pub fn get_reporte_resultados(&self)-> Vec<CandidatoVotos>{
-            let mut votos: Vec<CandidatoVotos> = Vec::new();
-            for eleccion in self.elecciones_finiquitadas.iter(){
-                for voto in eleccion.votos.iter(){
-                    votos.push(voto.clone());
-                }
-            }
-            votos.sort_by(|a, b| b.votos_recaudados.cmp(&a.votos_recaudados));
-            votos
-        }
+        //     for eleccion in self.elecciones_finiquitadas.iter() {
+        //         cant_emit = 0;
+        //         for votos in eleccion.votos.iter() {
+        //             cant_emit += votos.votos_recaudados as u128;
+        //         }
+        //         cant_total = eleccion.votantes_aprobados.len() as u128;
+        //         let porcentaje = (cant_emit * 100) / cant_total;
+        //         let informe = Informe::new(eleccion.eleccion_id, eleccion.cargo.clone(), cant_emit as u64, cant_total as u64, porcentaje);
+        //         informes.push(informe);
+        //     }
+        //     informes
+        // }
+
+
+        // #[ink(message)]
+        // pub fn get_reporte_resultados(&self)-> Vec<CandidatoVotos>{
+        //     let mut votos: Vec<CandidatoVotos> = Vec::new();
+        //     for eleccion in self.elecciones_finiquitadas.iter(){
+        //         for voto in eleccion.votos.iter(){
+        //             votos.push(voto.clone());
+        //         }
+        //     }
+        //     votos.sort_by(|a, b| b.votos_recaudados.cmp(&a.votos_recaudados));
+        //     votos
+        // }
         #[ink(message)]
         pub fn registrarse_a_eleccion(
             &mut self,
@@ -847,7 +861,7 @@ mod sistema_votacion {
     #[derive(Clone, Debug)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    struct Eleccion {
+    pub struct Eleccion {
         eleccion_id: u64, // Número alto de representación para un futuro sustento
 
         cargo: String, // Decido String en vez de ENUM debido a la inmensa cantidad de cargos posibles, al fin y al cabo, quien se encarga de esto es el administrador electoral
@@ -863,7 +877,7 @@ mod sistema_votacion {
         candidatos_aprobados: Vec<Usuario>,
         peticiones_candidatos: Vec<Usuario>,
 
-        votantes_aprobados: Vec<Usuario>,
+        pub votantes_aprobados: Vec<Usuario>,
         peticiones_votantes: Vec<Usuario>,
     }
 
@@ -909,8 +923,17 @@ mod sistema_votacion {
 
             estado
         }
+        pub fn get_eleccion_votos(&self) -> Vec<CandidatoVotos> {
+            self.votos.clone()
+        }
+        pub fn get_id(&self) -> u64 {
+            self.eleccion_id
+        }
+        pub fn get_cargo(&self) -> String {
+            self.cargo.clone()
+        }
     }
-
+    
     #[derive(Clone, Debug, PartialEq)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -974,6 +997,10 @@ mod sistema_votacion {
                 votos_recaudados: 0,
             }
         }
+        pub fn get_votos_recaudados(&self) -> u64 {
+            self.votos_recaudados
+        }
+
     }
 
     //////////////////////////////// USUARIOS ////////////////////////////////
@@ -1117,25 +1144,25 @@ mod sistema_votacion {
         SegInvalido { msg: String },
     }
 
-    #[derive(Clone, Debug)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct Informe{
-        eleccion_id: u64, // Número alto de representación para un futuro sustento
-        cargo: String,
-        votos_emitidos: u64,
-        votos_totales: u64,
-        porcentaje: u128,
-    }
-    impl Informe {
-        fn new(eleccion_id: u64, cargo: String, votos_emitidos: u64, votos_totales: u64, porcentaje: u128) -> Self {
-            Informe {
-                eleccion_id,
-                cargo,
-                votos_emitidos,
-                votos_totales,
-                porcentaje,
-            }
-        }
-    }
+    // #[derive(Clone, Debug)]
+    // #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    // #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    // pub struct Informe{
+    //     eleccion_id: u64, // Número alto de representación para un futuro sustento
+    //     cargo: String,
+    //     votos_emitidos: u64,
+    //     votos_totales: u64,
+    //     porcentaje: u128,
+    // }
+    // impl Informe {
+    //     fn new(eleccion_id: u64, cargo: String, votos_emitidos: u64, votos_totales: u64, porcentaje: u128) -> Self {
+    //         Informe {
+    //             eleccion_id,
+    //             cargo,
+    //             votos_emitidos,
+    //             votos_totales,
+    //             porcentaje,
+    //         }
+    //     }
+    // }
 }

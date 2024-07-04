@@ -1038,92 +1038,76 @@ mod sistema_votacion
 
     impl Fecha 
     {
-        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self //Result<Self, ErrorFecha> 
+        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Result<Self, ErrorFecha> 
         { 
-            /*let fecha =*/ Fecha { dia, mes, año, hora, min, seg }//;
-            //fecha.validar_fecha()?;
+            let fecha = Fecha { dia, mes, año, hora, min, seg };
+            fecha.validar_fecha()?;
 
-            //Ok( fecha )
-        }    
+            Ok( fecha )
+        }  
 
-        /*
-        fn validar_fecha(&self) -> Result<(), ErrorFecha>
-        {
-            let meses = Self::get_meses_del_año(self.año);
-            let hoy = Utc::now();
-
-            self.validar_tiempo(meses, hoy)?;
-
-            Ok(())
-        }
-
-
-        fn validar_tiempo(&self, meses: [u8;12], hoy: DateTime<Utc>) -> Result<(), ErrorFecha>  // Considero que para crear una elección debe ser como mínimo el día siguiente. (El admin no activa la elección, se activa "sola")
-        {
-            if self.dia <= hoy.day() as u8 || self.dia <= meses[self.mes as usize] { return Err( ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() } ); }
-            
-            if self.mes < hoy.month() as u8 || self.mes > 12                       { return Err( ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() } ); }
-            
-            if self.año < hoy.year() as u32                                        { return Err( ErrorFecha::AñoInvalido { msg: "El año ingresado es invalido.".to_owned() } ); }
-
-            if self.hora < hoy.hour() as u8 || self.hora > 23                      { return Err( ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned()} ); }
-
-            if self.min < hoy.minute() as u8 || self.min > 59                      { return Err( ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned()} ); }
-
-            if self.seg < hoy.second() as u8 || self.seg > 59                      { return Err( ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned()} ); }
-
-
-            Ok(())
-        }
         
-
-        fn get_meses_del_año(año: u32) -> [u8; 12]
+        fn validar_fecha(&self, hoy: Timestamp) -> Result<(), ErrorFecha>
         {
-            let feb = if Self::es_bisiesto(año) { 29 } else { 28 };
-
-            [30, feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        }
-
-
-        fn es_bisiesto(año: u32) -> bool {
-            año % 4 == 0 && (año % 100 != 0 || año % 400 == 0)
-        }
-        */
-
-
-
-        fn to_timestamp(&self) -> Timestamp
-        {
-            return 0;
-            /*
-            Utc.with_ymd_and_hms(
-                self.año as i32, 
-                self.mes as u32, 
-                self.mes as u32, 
-                self.hora as u32,
-                self.min as u32,
-                self.seg as u32
-            )
-            .unwrap() // Me doy el lujo de hacer unwrap debido a que ya efectué todas las validaciones necesarias al momento del "Fecha::new()"
-            .timestamp() as u64
-            */
-        }
-
-        /*
-        fn to_date(timestamp: Timestamp) -> Fecha
-        {
-            let date = DateTime::from_timestamp(timestamp as i64, 0).unwrap(); // Hago unwrap debido a que si falla será por causa de un problema de código, no de usuario
-
-            Fecha {
-                dia: date.day() as u8,
-                mes: date.month() as u8,
-                año: date.year() as u32,
-                hora: date.hour() as u8,
-                min: date.minute() as u8,
-                seg: date.second() as u8
+            if self.mes > 12 || self.mes == 0 {
+                return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() });
             }
+
+            if self.dia == 0 {
+                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
+            }
+
+            if !match self.mes {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => self.dia <= 31,
+                4 | 6 | 9 | 11 => self.dia <= 30,
+                2 => self.dia <= if self.es_bisiesto() { 29 } else { 28 }
+            } {
+                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
+            }
+
+            if self.hora > 23 {
+                return Err( ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() });
+            }
+
+            if self.min > 59 {
+                return Err( ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() });
+            }
+
+            if self.seg > 59 {
+                return Err( ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() });
+            }
+
+            Ok(())
         }
-        */
+
+
+        fn es_bisiesto(&self) -> bool {
+            (self.año % 4 == 0 && !(self.año % 100 == 0)) || (self.año % 100 == 0 && self.año % 400 == 0)
+        }
+
+
+
+        fn to_timestamp(&self) -> u64
+        {
+            let dia: u64 = self.dia.into();
+            let mes: u64 = self.mes.into();
+            let año: u64 = self.año.into();
+            let seg: u64 = self.seg.into();
+            let min: u64 = self.min.into();
+            let hora: u64 = self.hora.into();
+            let año_base = 4800;
+            let mes_ajustado = mes - 3;
+            let ajuste = if mes_ajustado > mes { 12 } else { 0 };
+            let año_ajustado = año + año_base - if mes_ajustado > mes { 1 } else { 0 };
+            let dias_mes = ((mes_ajustado + ajuste) * 62719 + 769) / 2048;
+            let dias_intercalar = año_ajustado / 4 - año_ajustado / 100 + año_ajustado / 400;
+            let segundos_calculados = (año_ajustado * 365 + dias_intercalar + dias_mes + (dia - 1) - 2472632) * 86400;
+            segundos_calculados + hora * 3600 + min * 60 + seg
+        }
+
+        fn fecha_pasada(&self, hoy: Timestamp) -> bool {
+            self.to_timestamp() < hoy
+        }
     }
 
 

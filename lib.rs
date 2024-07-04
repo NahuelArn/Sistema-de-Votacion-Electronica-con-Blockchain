@@ -173,6 +173,14 @@ mod sistema_votacion
         fn crear_nueva_eleccion_priv(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
+
+            if fecha_inicio.es_pasada(Self::env().block_timestamp()) {
+                return Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() });
+            }
+
+            if fecha_cierre.es_pasada(Self::env().block_timestamp()) {
+                return Err(ErrorSistema::FechaCierrePasada{ msg: "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned() });
+            }
             
             self.check_add_elecciones_id()?;
             let eleccion = Eleccion::new(
@@ -788,7 +796,8 @@ mod sistema_votacion
         NoSePoseenPermisos { msg: String },
         AccionUnicaDeUsuarios { msg: String },
         RepresentacionLimiteAlcanzada { msg: String },
-
+        FechaInicioPasada { msg: String },
+        FechaCierrePasada { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
 
@@ -1046,8 +1055,22 @@ mod sistema_votacion
             Ok( fecha )
         }  
 
-        
-        fn validar_fecha(&self, hoy: Timestamp) -> Result<(), ErrorFecha>
+        ///VALIDA QUE LA FECHA INGRESADA EN NUMEROS SEA UNA FECHA CORRECTA Y EXISTENTE, TENIENDO EN CUENTA AÑOS BISIESTOS
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha devuelve un Result con un Ok vacio, en caso de ser valida, o un ErrorFecha en caso de no serlo.
+        ///Esta funcion es llamada durante la creacion de una nueva fecha, asi que si no hay cambios a una fecha creada, no es necesario volver a llamarla.
+        ///
+        ///#Funcionalidad
+        ///Chequea que el mes este dentro del rango 1-12, que el dia este dentro de su rango dependiendo del mes actual y si el año es bisiesto o no.
+        ///Tambien chequea que la hora, los minutos, y los segundos esten dentro de sus correspondientes rangos.
+        ///
+        ///#Errores
+        ///Devuelve variantes de ErrorFecha, dependiendo del primer error encontrado. Esto quiere decir que si hay mas de un error en una fecha ingresada,
+        ///devolvera solo el primer error. Si se valida otra fecha con el error solucionado, el siguiente error se devolvera, si es que queda alguno.
+        ///Los nombres de los errores siguen el patron Dia/Mes/Hora/Min/Seg Invalido, dependiendo de cual es el campo invalido.
+        ///El año no puede ser invalido, por lo que no hay error que lo represente.
+        fn validar_fecha(&self) -> Result<(), ErrorFecha>
         {
             if self.mes > 12 || self.mes == 0 {
                 return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() });
@@ -1095,14 +1118,14 @@ mod sistema_votacion
             let seg: u64 = self.seg.into();
             let min: u64 = self.min.into();
             let hora: u64 = self.hora.into();
-            let año_base = 4800;
-            let mes_ajustado = mes - 3;
-            let ajuste = if mes_ajustado > mes { 12 } else { 0 };
-            let año_ajustado = año + año_base - if mes_ajustado > mes { 1 } else { 0 };
-            let dias_mes = ((mes_ajustado + ajuste) * 62719 + 769) / 2048;
-            let dias_intercalar = año_ajustado / 4 - año_ajustado / 100 + año_ajustado / 400;
-            let segundos_calculados = (año_ajustado * 365 + dias_intercalar + dias_mes + (dia - 1) - 2472632) * 86400;
-            segundos_calculados + hora * 3600 + min * 60 + seg
+
+            let tabla = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+
+            let año_ajustado = año + 4800;
+            let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
+            let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
+            let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
+            (dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg
         }
 
         fn fecha_pasada(&self, hoy: Timestamp) -> bool {

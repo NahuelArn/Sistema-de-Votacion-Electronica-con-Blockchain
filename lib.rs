@@ -1,21 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
-
+pub use self::sistema_votacion::*;
 
 #[ink::contract]
-mod sistema_votacion
-{
+mod sistema_votacion {
     ///////// USES /////////
-    use ink::prelude::vec::Vec;
-    use ink::prelude::string::String;
     use ink::prelude::borrow::ToOwned;
-
-
+    use ink::prelude::string::String;
+    use ink::prelude::vec::Vec;
 
     ///////// SISTEMA /////////
 
     #[ink(storage)]
-    pub struct SistemaVotacion
-    {
+    pub struct SistemaVotacion {
         admin_id: AccountId,
         usuarios_registados: Vec<Usuario>, // Usuarios ya aprobados
 
@@ -23,24 +19,16 @@ mod sistema_votacion
         elecciones_finiquitadas: Vec<Eleccion>,
         elecciones_conteo_id: u64,
 
-        resultados: Vec<ResultadosEleccion>, // Prefiero que esté en la elección pero para plantear
-
-        peticiones_registro: Vec<Usuario> // Peticiones en espera de aprobación
+        peticiones_registro: Vec<Usuario>, // Peticiones en espera de aprobación
     }
 
-    impl SistemaVotacion 
-    {
-
+    impl SistemaVotacion {
         //////////////////////////////////////// MESSAGES ////////////////////////////////////////
 
-
-
-        //////////////////// SISTEMA //////////////////// 
-
+        //////////////////// SISTEMA ////////////////////
 
         #[ink(constructor)]
         pub fn new(nombre_admin: String, dni_admin: String) -> Self {
-
             let admin_account_id = Self::env().caller();
             let admin_user = Usuario::new(admin_account_id, nombre_admin, dni_admin);
 
@@ -50,7 +38,6 @@ mod sistema_votacion
                 elecciones: Vec::new(),
                 elecciones_finiquitadas: Vec::new(),
                 elecciones_conteo_id: 0,
-                resultados: Vec::new(),
                 peticiones_registro: Vec::new()
             }
         }
@@ -71,7 +58,7 @@ mod sistema_votacion
         {
             let caller_id = Self::env().caller();
             self.consultar_inexistencia_usuario_en_sistema(caller_id)?;
-        
+
             let user = Usuario::new(caller_id, user_nombre, user_dni);
             self.registrar_en_cola_de_sistema(user);
 
@@ -91,7 +78,7 @@ mod sistema_votacion
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver las peticiones de registro.".to_owned())?;
 
-            Ok( self.peticiones_registro.clone() )
+            Ok(self.peticiones_registro.clone())
         }
 
         /// LE PERMITE AL ADMIN VALIDAR A UN USUARIO EN EL SISTEMA
@@ -137,20 +124,6 @@ mod sistema_votacion
             Ok(())
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////// ELECCIONES ////////////////////
 
         /// LE PERMITE AL ADMIN CREAR UNA NUEVA ELECCION
@@ -189,9 +162,12 @@ mod sistema_votacion
             }
             
             let eleccion = Eleccion::new(
-                self.elecciones_conteo_id, cargo,
-                fecha_inicio.to_timestamp(), fecha_cierre.to_timestamp(),
-                fecha_inicio, fecha_cierre
+                self.elecciones_conteo_id,
+                cargo,
+                fecha_inicio.to_timestamp(),
+                fecha_cierre.to_timestamp(),
+                fecha_inicio,
+                fecha_cierre,
             );
             self.check_add_elecciones_id()?;
 
@@ -218,7 +194,7 @@ mod sistema_votacion
         fn get_elecciones_actuales_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
         {
             self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
-            Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
+            Ok(self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()))
         }
 
         /// LE PERMITE A CUALQUIER USUARIO APROBADO VER UNA LISTA DE TODAS LAS ELECCIONES FINALIZADAS
@@ -242,9 +218,27 @@ mod sistema_votacion
             let timestamp = Self::env().block_timestamp();
 
             let elecciones = self.clonar_elecciones_historicas_a_interfaz(timestamp);
-            let elecciones = [elecciones, self.clonar_elecciones_actuales_a_interfaz(timestamp)].concat();
+            let elecciones = [
+                elecciones,
+                self.clonar_elecciones_actuales_a_interfaz(timestamp),
+            ]
+            .concat();
 
-            Ok( elecciones )
+            Ok(elecciones)
+        }
+        #[ink(message)]
+        pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
+            if id as usize >= self.elecciones_finiquitadas.len() {
+                return Err(ErrorSistema::EleccionInvalida{
+                    msg: "La elección ingresada no existe.".to_owned()
+                });
+            }
+            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].candidatos_aprobados.clone();
+            Ok(elecciones_votantes)
+        }
+        #[ink(message)]
+        pub fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion> {
+            self.elecciones_finiquitadas.clone()
         }
     
         /// LE PERMITE A UN USUARIO APROBADO REGISTRARSE A UNA ELECCION
@@ -262,7 +256,11 @@ mod sistema_votacion
         /// 
         /// ....
         #[ink(message)]
-        pub fn registrarse_a_eleccion(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema> // Cómo identificar elección
+        pub fn registrarse_a_eleccion(
+            &mut self,
+            eleccion_id: u64,
+            rol: Rol,
+        ) -> Result<(), ErrorSistema> // Cómo identificar elección
         {
             self.registrarse_a_eleccion_priv(eleccion_id, rol)
         }
@@ -270,9 +268,13 @@ mod sistema_votacion
         fn registrarse_a_eleccion_priv(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema>
         {
             let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden registrarse a las elecciones.".to_owned())?;
+          
+            let eleccion_index = self.validar_eleccion(
+                eleccion_id,
+                EstadoEleccion::PeriodoInscripcion,
+                Self::env().block_timestamp(),
+            )?;
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
-            
             return self.registrar_peticion_eleccion(caller_user, rol, eleccion_index);
         }
 
@@ -325,7 +327,7 @@ mod sistema_votacion
 
             Ok( self.elecciones[eleccion_index].peticiones_votantes.clone() )
         }
-
+      
 
         ///PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION
         /// 
@@ -381,23 +383,7 @@ mod sistema_votacion
             self.registrar_voto_a_candidato(candidato_index, eleccion_index)
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////////////////////////// PRIVATES ////////////////////////////////////////
-
-
 
         //////////////////// SISTEMA ////////////////////
 
@@ -428,14 +414,6 @@ mod sistema_votacion
             self.aprobar_usuario(new_admin_id);
         }
 
-
-
-
-
-
-
-
-
         //////////////////// ELECCIONES ////////////////////
 
         //AGREGA A UN USUARIO A LA COLA DE ESPERA PARA SER VOTANTE O CANDIDATO EN UNA ELECCION//
@@ -445,10 +423,14 @@ mod sistema_votacion
             self.validar_inexistencia_de_usuario_en_eleccion(user.account_id, rol.clone(), eleccion_index)?;
 
             match rol {
-                Rol::Votante   => self.elecciones[eleccion_index].peticiones_votantes.push(user),
-                Rol::Candidato => self.elecciones[eleccion_index].peticiones_candidatos.push(user)
+                Rol::Votante => self.elecciones[eleccion_index]
+                    .peticiones_votantes
+                    .push(user),
+                Rol::Candidato => self.elecciones[eleccion_index]
+                    .peticiones_candidatos
+                    .push(user),
             }
-            
+
             Ok(())
         }
 
@@ -457,14 +439,11 @@ mod sistema_votacion
         {
             let mut vec: Vec<EleccionInterfaz> = Vec::new();
 
-            for i in 0 .. self.elecciones.len()
-            {
-                vec.push(
-                    EleccionInterfaz::from_eleccion(
-                        self.elecciones[i].get_estado_eleccion(timestamp),
-                        self.elecciones[i].clone()
-                    )
-                );
+            for i in 0..self.elecciones.len() {
+                vec.push(EleccionInterfaz::from_eleccion(
+                    self.elecciones[i].get_estado_eleccion(timestamp),
+                    self.elecciones[i].clone(),
+                ));
             }
 
             vec
@@ -475,14 +454,11 @@ mod sistema_votacion
         {
             let mut vec: Vec<EleccionInterfaz> = Vec::new();
 
-            for i in 0 .. self.elecciones_finiquitadas.len()
-            {
-                vec.push(
-                    EleccionInterfaz::from_eleccion(
-                        self.elecciones_finiquitadas[i].get_estado_eleccion(timestamp),
-                        self.elecciones_finiquitadas[i].clone()
-                    )
-                );
+            for i in 0..self.elecciones_finiquitadas.len() {
+                vec.push(EleccionInterfaz::from_eleccion(
+                    self.elecciones_finiquitadas[i].get_estado_eleccion(timestamp),
+                    self.elecciones_finiquitadas[i].clone(),
+                ));
             }
 
             vec
@@ -492,13 +468,13 @@ mod sistema_votacion
         //SI YA FUE APROBADO O NO EXISTE EN EL SISTEMA SE INFORMA//
         fn aprobar_candidato(&mut self, candidato_index: usize, eleccion_index: usize) 
         {
-            let e= &mut self.elecciones[eleccion_index];
+            let e = &mut self.elecciones[eleccion_index];
 
             let candidato = e.peticiones_candidatos.remove(candidato_index);
-            e.candidatos_aprobados.push( candidato.clone() );
+            e.candidatos_aprobados.push(candidato.clone());
 
             let candidato_votos = CandidatoVotos::new(candidato.nombre, candidato.dni);
-            e.votos.push( candidato_votos );
+            e.votos.push(candidato_votos);
         }
 
         fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
@@ -515,25 +491,7 @@ mod sistema_votacion
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////////////////////////// VALIDACIONES ////////////////////////////////////////
-
-
 
         //////////////////// SISTEMA ////////////////////
 
@@ -553,8 +511,8 @@ mod sistema_votacion
 
             return match self.validar_usuario(caller_id) {
                 Ok(_) => Ok(()),
-                Err(e) => Err( e )
-            }
+                Err(e) => Err(e),
+            };
         }
 
         //VALIDA QUE EL USUARIO ESTE APROBADO EN EL SISTEMA, DE SER EL CASO LO DEVUELVE//
@@ -570,7 +528,7 @@ mod sistema_votacion
         fn validar_usuario(&self, caller_id: AccountId) -> Result<Usuario, ErrorSistema>
         {
             let index = self.validar_usuario_en_sistema(caller_id)?;
-            Ok( self.usuarios_registados[index].clone() )
+            Ok(self.usuarios_registados[index].clone())
         }
 
         //CONFIRMA LA NO EXISTENCIA DE UN USUARIO EN EL SISTEMA//
@@ -595,16 +553,19 @@ mod sistema_votacion
                 true  => Err( ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema.".to_owned() } ),
                 false => Err( ErrorSistema::NoExisteUsuario { msg: "El usuario no existe en el sistema.".to_owned() } )
             }
-        }
 
         //INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE PETICIONES DE REGISTRO//
         fn existe_usuario_en_peticiones_del_sistema(&self, caller_id: AccountId) -> bool {
-            self.peticiones_registro.iter().any(|u| u.account_id == caller_id)
+            self.peticiones_registro
+                .iter()
+                .any(|u| u.account_id == caller_id)
         }
 
         //INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE USUARIOS REGISTRADOS EN EL SISTEMA//
         fn existe_usuario_registrado_en_sistema(&self, caller_id: AccountId) -> bool {
-            self.usuarios_registados.iter().any(|u| u.account_id == caller_id)
+            self.usuarios_registados
+                .iter()
+                .any(|u| u.account_id == caller_id)
         }
 
         //SE BUSCA Y RETORNA LA POSICION EN LA COLA DE UN USUARIO REGISTRADO ESPECIFICO EN CASO DE EXISTIR//
@@ -637,20 +598,8 @@ mod sistema_votacion
             return match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
                 true =>  Err( ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_owned() } ),
                 false => Err( ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_owned() } )
-            }
+            };
         }
-
-
-
-
-
-
-
-
-
-
-
-
 
         //////////////////// ELECCIONES ////////////////////
 
@@ -665,13 +614,16 @@ mod sistema_votacion
             }
         }
 
-
-        fn validar_eleccion(&mut self, eleccion_id: u64, estado_buscado: EstadoEleccion, timestamp: u64) -> Result<usize, ErrorSistema>
-        {
+        fn validar_eleccion(
+            &mut self,
+            eleccion_id: u64,
+            estado_buscado: EstadoEleccion,
+            timestamp: u64,
+        ) -> Result<usize, ErrorSistema> {
             let eleccion_index = self.existe_eleccion(eleccion_id)?;
             self.consultar_estado_eleccion(estado_buscado, eleccion_index, timestamp)?;
 
-            Ok( eleccion_index )
+            Ok(eleccion_index)
         }
 
         //VALIDA LA EXISTENCIA DE UNA ELECCION Y DEVUELVE SU POSICION EN EL VEC EN CASO CONTRARIO LO INFORMA//
@@ -696,7 +648,11 @@ mod sistema_votacion
                 }
             }
 
-            Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionFinalizada { msg: "La id de elección ingresada ya finalizó.".to_owned() }} )
+            Err(ErrorSistema::ErrorDeEleccion {
+                error: ErrorEleccion::EleccionFinalizada {
+                    msg: "La id de elección ingresada ya finalizó.".to_owned(),
+                },
+            })
         }
 
         //SE CONSULTA SI LA ELECCION ESTA EN EL ESTADO DESEADO EN CASO CONTRARIO SE INFORMA EL ESTADO ACTUAL DE LA ELECCION//
@@ -704,12 +660,28 @@ mod sistema_votacion
         {
             let estado_eleccion = self.elecciones[eleccion_index].get_estado_eleccion(timestamp);
 
-            if estado_buscado == estado_eleccion { return Ok(()); }
+            if estado_buscado == estado_eleccion {
+                return Ok(());
+            }
 
             return match estado_eleccion {
-                EstadoEleccion::PeriodoInscripcion => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoInscripcion { msg: "La elección ingresada se encuentra en período de inscripción.".to_owned() } } ),
-                EstadoEleccion::PeriodoVotacion    => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoVotacion    { msg: "La elección ingresada se encuentra en período de votación.".to_owned() } } ),
-                EstadoEleccion::Cerrada            => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionFinalizada           { msg: "La elección ingresada se encuentra finiquitada.".to_owned() } } ),
+                EstadoEleccion::PeriodoInscripcion => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionEnProcesoInscripcion {
+                        msg: "La elección ingresada se encuentra en período de inscripción."
+                            .to_owned(),
+                    },
+                }),
+                EstadoEleccion::PeriodoVotacion => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionEnProcesoVotacion {
+                        msg: "La elección ingresada se encuentra en período de votación."
+                            .to_owned(),
+                    },
+                }),
+                EstadoEleccion::Cerrada => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionFinalizada {
+                        msg: "La elección ingresada se encuentra finiquitada.".to_owned(),
+                    },
+                }),
             };
         }
 
@@ -720,28 +692,48 @@ mod sistema_votacion
             let mut aprob_err_msg = None;
             let mut pet_err_msg = None;
 
-
-            if e.peticiones_votantes.iter().any(|p| p.account_id == caller_id) { pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned() ); }
-
-            else if e.votantes_aprobados.iter().any(|p| p.account_id == caller_id) { aprob_err_msg = Some( "Usted ya se encuentra aprobado para votante.".to_owned() ); }
-            
-            else if e.peticiones_candidatos.iter().any(|p| p.account_id == caller_id) { pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para candidato., debe esperar a ser aprobado".to_owned() ); }
-
-            else if e.candidatos_aprobados.iter().any(|p| p.account_id == caller_id) { aprob_err_msg = Some( "Usted ya se encuentra aprobado para candidato.".to_owned() ); }
-
-
-            if let Some(msg) = aprob_err_msg 
-            { 
-                return match rol {
-                    Rol::Votante   => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg } } ),
-                    Rol::Candidato => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg } } )
-                };
-            }
-            else if let Some(msg) = pet_err_msg
+            if e.peticiones_votantes
+                .iter()
+                .any(|p| p.account_id == caller_id)
             {
+                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned() );
+            } else if e
+                .votantes_aprobados
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                aprob_err_msg = Some("Usted ya se encuentra aprobado para votante.".to_owned());
+            } else if e
+                .peticiones_candidatos
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para candidato., debe esperar a ser aprobado".to_owned() );
+            } else if e
+                .candidatos_aprobados
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                aprob_err_msg = Some("Usted ya se encuentra aprobado para candidato.".to_owned());
+            }
+
+            if let Some(msg) = aprob_err_msg {
                 return match rol {
-                    Rol::Votante   => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg } } ),
-                    Rol::Candidato => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg } } )
+                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
+                    }),
+                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
+                    }),
+                };
+            } else if let Some(msg) = pet_err_msg {
+                return match rol {
+                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
+                    }),
+                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
+                    }),
                 };
             }
 
@@ -757,7 +749,7 @@ mod sistema_votacion
             return match self.elecciones[eleccion_index].peticiones_votantes.iter().any(|v| v.account_id == votante_id) {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoAprobado { msg: "Usted no fue aprobado para esta elección, no  tendrá permiso para votar.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } } )
-            }            
+            };
         }
 
         //EL SISTEMA VALIDA QUE EL CANDIDATO A APROBAR ESTE EN LA LISTA DE CANDIDATOS PENDIENTES
@@ -770,7 +762,6 @@ mod sistema_votacion
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
-        }
 
     
         //EL SISTEMA VALIDA QUE EL CANDIDATO SE EN CUANTRE EN LA LISTA DE CANDIDATOS APROBADOS
@@ -779,12 +770,11 @@ mod sistema_votacion
         {
             if let Some(index) = self.get_candidato_aprobado(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
-            return match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
+            match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoAprobado { msg: "El candidato ingresado está en espera de aprobación.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
         }
-
 
         //EL SISTEMA BUSCA AL CANDIDATO APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
         //SI NO ESTA DEVUELVE NONE
@@ -827,25 +817,11 @@ mod sistema_votacion
         FechaInicioPasada { msg: String },
         FechaCierrePasada { msg: String },
         FechaCierreAntesInicio { msg: String },
+        EleccionInvalida { msg: String },
+        NoExisteEleccion { msg: String },
+        ResultadosNoDisponibles { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     //////////////////////////////// ELECCIONES ////////////////////////////////
 
@@ -860,28 +836,36 @@ mod sistema_votacion
         fecha_cierre: Fecha,
 
         estado_eleccion: EstadoEleccion,
-        candidatos_aprobados: Vec<Usuario>
+        candidatos_aprobados: Vec<Usuario>,
     }
 
     impl EleccionInterfaz {
         fn new(
-            eleccion_id: u64, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha,
-            estado_eleccion: EstadoEleccion, candidatos_aprobados: Vec<Usuario>
-        ) -> Self
-        {
-            EleccionInterfaz { 
-                eleccion_id, cargo, 
-                fecha_inicio, fecha_cierre,
-                estado_eleccion, candidatos_aprobados
+            eleccion_id: u64,
+            cargo: String,
+            fecha_inicio: Fecha,
+            fecha_cierre: Fecha,
+            estado_eleccion: EstadoEleccion,
+            candidatos_aprobados: Vec<Usuario>,
+        ) -> Self {
+            EleccionInterfaz {
+                eleccion_id,
+                cargo,
+                fecha_inicio,
+                fecha_cierre,
+                estado_eleccion,
+                candidatos_aprobados,
             }
         }
 
         fn from_eleccion(estado_eleccion: EstadoEleccion, eleccion: Eleccion) -> EleccionInterfaz {
             EleccionInterfaz::new(
-                eleccion.eleccion_id, eleccion.cargo,
+                eleccion.eleccion_id,
+                eleccion.cargo,
                 eleccion.fecha_inicio_interfaz,
                 eleccion.fecha_cierre_interfaz,
-                estado_eleccion, eleccion.candidatos_aprobados
+                estado_eleccion,
+                eleccion.candidatos_aprobados,
             )
         }
     }
@@ -894,7 +878,7 @@ mod sistema_votacion
     {
         eleccion_id: u64, // Número alto de representación para un futuro sustento
 
-        cargo: String,  // Decido String en vez de ENUM debido a la inmensa cantidad de cargos posibles, al fin y al cabo, quien se encarga de esto es el administrador electoral
+        cargo: String, // Decido String en vez de ENUM debido a la inmensa cantidad de cargos posibles, al fin y al cabo, quien se encarga de esto es el administrador electoral
 
         fecha_inicio: Timestamp, // Dato pedido del profe
         fecha_cierre: Timestamp,
@@ -902,27 +886,38 @@ mod sistema_votacion
         fecha_inicio_interfaz: Fecha,
         fecha_cierre_interfaz: Fecha,
 
-        votos: Vec<CandidatoVotos>,  // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzado
+        votos: Vec<CandidatoVotos>, // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzado
 
         candidatos_aprobados: Vec<Usuario>,
         peticiones_candidatos: Vec<Usuario>,
 
-        votantes_aprobados: Vec<Usuario>,
-        peticiones_votantes: Vec<Usuario>
+        pub votantes_aprobados: Vec<Usuario>,
+        peticiones_votantes: Vec<Usuario>,
     }
 
-    impl Eleccion
-    {
-        fn new(eleccion_id:u64, cargo: String, fecha_inicio: Timestamp, fecha_cierre: Timestamp, fecha_inicio_interfaz: Fecha, fecha_cierre_interfaz: Fecha) -> Self {
+    impl Eleccion {
+        fn new(
+            eleccion_id: u64,
+            cargo: String,
+            fecha_inicio: Timestamp,
+            fecha_cierre: Timestamp,
+            fecha_inicio_interfaz: Fecha,
+            fecha_cierre_interfaz: Fecha,
+        ) -> Self {
             Eleccion {
-                eleccion_id, cargo,
-                fecha_inicio, fecha_cierre,
-                fecha_inicio_interfaz, fecha_cierre_interfaz,
+                eleccion_id,
+                cargo,
+                fecha_inicio,
+                fecha_cierre,
+                fecha_inicio_interfaz,
+                fecha_cierre_interfaz,
 
                 votos: Vec::new(),
 
-                candidatos_aprobados: Vec::new(), peticiones_candidatos: Vec::new(),
-                votantes_aprobados: Vec::new(), peticiones_votantes: Vec::new()
+                candidatos_aprobados: Vec::new(),
+                peticiones_candidatos: Vec::new(),
+                votantes_aprobados: Vec::new(),
+                peticiones_votantes: Vec::new(),
             }
         }
 
@@ -936,6 +931,15 @@ mod sistema_votacion
             } else {
                 EstadoEleccion::PeriodoVotacion
             }
+        }
+        pub fn get_eleccion_votos(&self) -> Vec<CandidatoVotos> {
+            self.votos.clone()
+        }
+        pub fn get_id(&self) -> u64 {
+            self.eleccion_id
+        }
+        pub fn get_cargo(&self) -> String {
+            self.cargo.clone()
         }
     }
 
@@ -954,78 +958,57 @@ mod sistema_votacion
         EleccionFinalizada { msg: String },
 
         CandidatoActualmenteAprobado { msg: String },
-        CandidatoNoAprobado { msg : String },
+        CandidatoNoAprobado { msg: String },
         CandidatoNoExiste { msg: String },
 
         VotanteActualmenteAprobado { msg: String },
-        VotanteNoAprobado { msg : String },
+        VotanteNoAprobado { msg: String },
         VotanteNoExiste { msg: String },
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     //////////////////////////////// VOTOS Y RESULTADOS ////////////////////////////////
 
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadosEleccion
-    {
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct ResultadosEleccion {
         cargo: String,
-        resultados: Vec<ResultadoCandidato>
+        resultados: Vec<ResultadoCandidato>,
     }
 
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadoCandidato
-    {
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct ResultadoCandidato {
         posicion: u8,
-        candidato: CandidatoVotos
+        candidato: CandidatoVotos,
     }
 
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct CandidatoVotos
-    {
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct CandidatoVotos {
         candidato_nombre: String,
         candidato_dni: String,
         votos_recaudados: u64,
     }
 
-
-    impl CandidatoVotos
-    {
+    impl CandidatoVotos {
         fn new(candidato_nombre: String, candidato_dni: String) -> Self {
-            CandidatoVotos { candidato_nombre, candidato_dni, votos_recaudados: 0 }
+            CandidatoVotos {
+                candidato_nombre,
+                candidato_dni,
+                votos_recaudados: 0,
+            }
         }
+        pub fn get_votos_recaudados(&self) -> u64 {
+            self.votos_recaudados
+        }
+
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     //////////////////////////////// USUARIOS ////////////////////////////////
-
+    
 
     #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum Rol { Votante, Candidato }
@@ -1036,32 +1019,18 @@ mod sistema_votacion
     {
         account_id: AccountId,
         nombre: String,
-        dni: String
+        dni: String,
     }
 
-
-    impl Usuario
-    {
+    impl Usuario {
         fn new(account_id: AccountId, nombre: String, dni: String) -> Self {
-            Usuario { account_id, nombre, dni }
+            Usuario {
+                account_id,
+                nombre,
+                dni,
+            }
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     ////////////////////////////// Fecha /////////////////////////////
 
@@ -1212,9 +1181,9 @@ mod sistema_votacion
         DiaInvalido { msg: String },
         MesInvalido { msg: String },
         AñoInvalido { msg: String },
-        HoraInvalida { msg: String},
+        HoraInvalida { msg: String },
         MinInvalido { msg: String },
-        SegInvalido { msg: String }
+        SegInvalido { msg: String },
     }
 
     #[cfg(test)]

@@ -1149,13 +1149,13 @@ mod sistema_votacion
         ///En caso de necesitar años anteriores a 1970, el algoritmo esta capacitado, y solo se necesitaria cambiar los tipos de u64 a i64.
         ///
         ///El algoritmo en operaciones normales seria el siguiente:
-        ```
+        ///```
         ///let año_ajustado = año + 4800;
         ///let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
         ///let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
         ///let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
         ///((dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg) * 1000
-        ```
+        ///```
         ///Este algoritmo calcula la cantidad de febreros y en la variable de dias_intercalar se calculan 
         ///los febreros que tienen dias extras al estar en años bisiesto. Todos estos dias se suman a los dias
         ///normales que suceden en cada año pasado (años * 365), a el dia actual guardado en la fecha, y a la cantidad de dias

@@ -151,4 +151,115 @@ mod reporte {
             }
         }
     }
+
+#[cfg(test)]
+mod tests {
+    use ink::prelude::vec::Vec;
+    use super::*;
+    use ink::{env::test, primitives::AccountId};
+    use sistema_votacion::{CandidatoVotos, ErrorSistema, Fecha, Rol, SistemaVotacion, SistemaVotacionRef, Usuario};
+
+    //new de fecha en pub, new de usuario en pub
+
+    //Este test testea que la funcion "reporte_registro_de_votantes" brinde los usuarios registrados y aceptados de una determinada eleccion
+    #[ink::test]
+    fn test_reporte_registro_de_votantes() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        
+        //Creamos el sistema de votacion
+        ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        let mut sistema = SistemaVotacion::new("dante".to_string(), "7777".to_string());
+
+        //Registramos usuarios al sistema
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_en_sistema("Pepe".to_string(), "1111".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_en_sistema("Merlina".to_string(), "2222".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+        sistema.registrarse_en_sistema("Federico".to_string(), "3333".to_string());
+
+        //Aprobamos a bob y a alice
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_usuario_sistema(accounts.alice);
+        sistema.aprobar_usuario_sistema(accounts.bob);
+
+        //Creamos una eleccion
+        sistema.crear_nueva_eleccion("Un cargo".to_string(), Fecha::new(12, 10, 2001, 20, 30, 00), Fecha::new(12, 10, 2001, 20, 30, 00));
+        
+        //Ponemos en espera de registro a bob y a alice en dicha eleccion
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+
+        //Aprobamos el registro de bob y alice como votantes
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_votante_eleccion(1, "1111".to_string());
+        sistema.aprobar_votante_eleccion(1, "2222".to_string());
+
+        //Creamos el reporte con el sistema
+        let reporte = Reporte::new(sistema);
+
+        //Votantes esperados
+        let vec_esperado = vec![Usuario::new(accounts.alice, "Merlina".to_string(), "2222".to_string()), Usuario::new(accounts.bob, "Pepe".to_string(), "1111".to_string())];
+
+        //Testeos
+        assert_eq!(Ok(vec_esperado), reporte.reporte_registro_de_votantes_priv(1));
+        
+    }
+    
+    #[ink::test]
+    fn test_reporte_participacion() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+        
+        //Creamos el sistema de votacion
+        ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        let mut sistema = SistemaVotacionRef::new("dante".to_string(), "7777".to_string());
+
+        //Registramos usuarios al sistema
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_en_sistema("Pepe".to_string(), "1111".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_en_sistema("Merlina".to_string(), "2222".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+        sistema.registrarse_en_sistema("Federico".to_string(), "3333".to_string());
+
+        //Aprobamos a bob, alice y a charlie
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_usuario_sistema(accounts.alice);
+        sistema.aprobar_usuario_sistema(accounts.bob);
+        sistema.aprobar_usuario_sistema(accounts.charlie);
+
+        //Creamos una eleccion
+        sistema.crear_nueva_eleccion("Un cargo".to_string(), Fecha::new(12, 10, 2001, 20, 30, 00), Fecha::new(12, 10, 2001, 20, 30, 00));
+        
+        //Ponemos en espera de registro a bob, alice y charlie en dicha eleccion
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+
+        //Aprobamos el registro de bob y alice como votantes
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_votante_eleccion(1, "1111".to_string());
+        sistema.aprobar_votante_eleccion(1, "2222".to_string());
+
+        //bob y alice votan
+        
+
+        //Creamos el reporte con el sistema
+        let reporte = Reporte::new(sistema);
+
+    }
+    
+    #[ink::test]
+    fn reporte_participacion_test() {
+        
+    }
+
+}
 }

@@ -176,6 +176,29 @@ mod sistema_votacion {
             Ok(())
         }
 
+        #[ink(message)]
+        pub fn finalizar_y_contar_eleccion(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        {
+            self.finalizar_y_contar_eleccion_priv(eleccion_id)
+        }
+
+        fn finalizar_y_contar_eleccion_priv(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede finalizar y contar una eleccion.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::Cerrada,  Self::env().block_timestamp())?;
+            let mut eleccion = self.elecciones.swap_remove(eleccion_index);
+            if eleccion.votos.is_empty() {
+                return Err(ErrorSistema::NoHayVotos{ msg: "La lista de votos de candidatos esta vacia.".to_owned() })
+            }
+            eleccion.votos.sort_by_key(|candidato| candidato.votos_recaudados);
+            eleccion.votos.reverse();
+            self.elecciones_finiquitadas.push(eleccion.clone());
+            Ok(eleccion.votos[0].clone())
+        }
+
+
+
         /// LE PERMITE A CUALQUIER USUARIO APROBADO ACCEDER A UNA LISTA DE LAS ELECCIONES EN CURSO
         /// 
         /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
@@ -316,12 +339,12 @@ mod sistema_votacion {
         #[ink(message)]
         pub fn get_votantes_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
         {
-            self.get_candidatos_pendientes_priv(eleccion_id)
+            self.get_votantes_pendientes_priv(eleccion_id)
         }
 
-        fn get_candidatos_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        fn get_votantes_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned())?;
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de votantes pendientes para las elecciones.".to_owned())?;
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
 
@@ -362,6 +385,25 @@ mod sistema_votacion {
             self.aprobar_candidato(candidato_index, eleccion_index);
             Ok(())
         }
+
+
+        #[ink(message)]
+        pub fn aprobar_votante_eleccion(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.aprobar_votante_eleccion_priv(eleccion_id, votante_dni)
+        }
+
+        fn aprobar_votante_eleccion_priv(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar votantes para las elecciones.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+            let votante_index = self.validar_votante_en_pendientes(votante_dni, eleccion_index)?;
+
+            self.aprobar_votante(votante_index, eleccion_index);
+            Ok(())
+        }
+
 
         /// PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO
         #[ink(message)]
@@ -477,6 +519,16 @@ mod sistema_votacion {
             e.votos.push(candidato_votos);
         }
 
+        //APRUEBA UN VOTANTE PARA PARTICIPAR EN UNA ELECCION//
+        //SI YA FUE APROBADO O NO EXISTE EN EL SISTEMA SE INFORMA//
+        fn aprobar_votante(&mut self, votante_index: usize, eleccion_index: usize) 
+        {
+            let e = &mut self.elecciones[eleccion_index];
+
+            let votante = e.peticiones_votantes.remove(votante_index);
+            e.votantes_aprobados.push(votante.clone());
+        }
+
         fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             if self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1).is_none() { 
@@ -553,6 +605,7 @@ mod sistema_votacion {
                 true  => Err( ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema.".to_owned() } ),
                 false => Err( ErrorSistema::NoExisteUsuario { msg: "El usuario no existe en el sistema.".to_owned() } )
             }
+        }
 
         //INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE PETICIONES DE REGISTRO//
         fn existe_usuario_en_peticiones_del_sistema(&self, caller_id: AccountId) -> bool {
@@ -762,6 +815,19 @@ mod sistema_votacion {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
+        }
+
+        //EL SISTEMA VALIDA QUE EL VOTANTE A APROBAR ESTE EN LA LISTA DE VOTANTES PENDIENTES
+        //DE NO SER EL CASO LO INFORMA
+        fn validar_votante_en_pendientes(&self, votante_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
+        {
+            if let Some(index) = self.get_votante_pendiente(votante_dni.clone(), eleccion_index) { return Ok(index) }
+
+            match self.get_votante_aprobado(votante_dni, eleccion_index).is_some() {
+                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "El votante ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
+                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante ingresado no existe en la elección.".to_owned() } } ),
+            }
+        }
 
     
         //EL SISTEMA VALIDA QUE EL CANDIDATO SE EN CUANTRE EN LA LISTA DE CANDIDATOS APROBADOS
@@ -787,6 +853,17 @@ mod sistema_votacion {
             None
         }
 
+        //EL SISTEMA BUSCA AL VOTANTE APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
+        //SI NO ESTA DEVUELVE NONE
+        fn get_votante_aprobado(&self, votante_dni: String, eleccion_index: usize) -> Option<usize> 
+        {
+            for i in 0 .. self.elecciones[eleccion_index].votantes_aprobados.len() {
+                if self.elecciones[eleccion_index].votantes_aprobados[i].dni == votante_dni { return Some(i); }
+            }
+
+            None
+        }
+
         
         //EL SISTEMA BUSCA A UN CANDIDATO EN LA LISTA DE CANDIDATOS PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
         //SI NO ESTA DEVUELVE NONE
@@ -794,6 +871,17 @@ mod sistema_votacion {
         {
             for i in 0 .. self.elecciones[eleccion_index].peticiones_candidatos.len() {
                 if self.elecciones[eleccion_index].peticiones_candidatos[i].dni == candidato_dni { return Some(i); }
+            }
+
+            None
+        }
+
+        //EL SISTEMA BUSCA A UN VOTANTE EN LA LISTA DE VOTANTES PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
+        //SI NO ESTA DEVUELVE NONE
+        fn get_votante_pendiente(&self, votante_dni: String, eleccion_index: usize) -> Option<usize>  
+        {
+            for i in 0 .. self.elecciones[eleccion_index].peticiones_votantes.len() {
+                if self.elecciones[eleccion_index].peticiones_votantes[i].dni == votante_dni { return Some(i); }
             }
 
             None
@@ -820,6 +908,7 @@ mod sistema_votacion {
         EleccionInvalida { msg: String },
         NoExisteEleccion { msg: String },
         ResultadosNoDisponibles { msg: String },
+        NoHayVotos { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
 
@@ -874,7 +963,7 @@ mod sistema_votacion {
 
 
     #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    struct Eleccion
+    pub struct Eleccion
     {
         eleccion_id: u64, // Número alto de representación para un futuro sustento
 

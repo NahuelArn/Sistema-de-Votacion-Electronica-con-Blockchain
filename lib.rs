@@ -1,16 +1,10 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 
-// Falta conteo, test, reporte, fecha(conversión y validación), documentación
+// El código obvio está incompleto, pero lo subo por las dudas para que esté en la nube
 
-// Maxi: Conteo, fecha,
-// Tobi: Test,
-// Nahuel: Reporte, ¿doc?,
-// Dante: Ayuda
 
-// Preguntas:   (las que me acuerdo ahora)
-// Dato para votar un candidato ¿Dni, AccountId, ...?
-// Documentación en html
+
 
 
 #[ink::contract]
@@ -34,6 +28,8 @@ mod sistema_votacion
         elecciones: Vec<Eleccion>,
         elecciones_finiquitadas: Vec<Eleccion>,
         elecciones_conteo_id: u64,
+
+        resultados: Vec<ResultadosEleccion>, // Prefiero que esté en la elección pero para plantear
 
         peticiones_registro: Vec<Usuario> // Peticiones en espera de aprobación
     }
@@ -60,6 +56,7 @@ mod sistema_votacion
                 elecciones: Vec::new(),
                 elecciones_finiquitadas: Vec::new(),
                 elecciones_conteo_id: 0,
+                resultados: Vec::new(),
                 peticiones_registro: Vec::new()
             }
         }
@@ -229,7 +226,6 @@ mod sistema_votacion
             self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
             Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
         }
-    
 
         /// LE PERMITE A CUALQUIER USUARIO APROBADO VER UNA LISTA DE TODAS LAS ELECCIONES FINALIZADAS
         /// 
@@ -494,18 +490,19 @@ mod sistema_votacion
             e.votos.push( candidato_votos );
         }
 
-
         fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             if self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1).is_none() { 
                 return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) 
             }
-
-            // (CREO) que si un candidato está en I posición del Vec de aprobados, siempre va a estar en I posicion del Vec de votos
+             // (CREO) que si un candidato está en I posición del Vec de aprobados, siempre va a estar en I posicion del Vec de votos
             // creo esto porque en el mismo proceso que apruebo un candidato (La función de arriba) pusheo el candidato a aprobados y también a votos, por ende creo que van a quedar estructuras idénticas con distintos tipo de datos
 
             Ok(())
         }
+    
+
+
 
 
 

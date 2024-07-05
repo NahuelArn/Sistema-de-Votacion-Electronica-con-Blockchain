@@ -3,10 +3,9 @@
   <head align="center" >
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title align="center">Sistema de Votación Electrónica con Blockchain</title>
   </head>
-  <body align="center">
-    <h1>Sistema de Votación Electrónica con Blockchain</h1>
+  <body >
+    <h1 >Sistema de Votación Electrónica con Blockchain</h1>
     <h2>Descripción del Proyecto</h2>
     <p>
       Este proyecto desarrolla un sistema de votación electrónica seguro y

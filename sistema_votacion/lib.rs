@@ -176,6 +176,24 @@ mod sistema_votacion {
             Ok(())
         }
 
+
+        ///LE PERMITE AL ADMIN CERRAR UNA ELECCION FINALIZADA Y CONTAR LOS VOTOS
+        ///
+        ///#Uso
+        ///Al un admin llamar a la funcion con un id de una eleccion cerrada, pero que todavia esta dentro de la lista de elecciones activas,
+        ///esta es movida a la lista de elecciones finalizadas y los votos son contados.
+        ///Los candidatos quedan ordenados por cantidad de votos, de mayor a menor, dentro de el campo de votos en la eleccion.
+        ///El ganador tambien es devuelto con sus datos, como nombre, dni, y cantidad de votos.
+        ///Si no hay cantidatos o votos se devuelve un resultado vacio.
+        ///
+        ///#Funcionalidad
+        ///La funcion chequea si el caller es admin, despues encuentra la eleccion, si es que existe. Detecta si hay votos en la eleccion,
+        ///si no hay se devuelve un error, y si hay los ordena por cantidad de votos, de mayor a menor. Por ultimo mueve la eleccion a la
+        ///lista de elecciones finalizadas, y devuelve una copia de los datos del ganador.
+        ///
+        ///#Errores
+        ///Devuelve un error por la falta de privilegios de admin de ErrorSistem::NoPoseenPermisos, y un ErrorEleccion
+        ///para indicar una eleccion invalida.
         #[ink(message)]
         pub fn finalizar_y_contar_eleccion(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
         {
@@ -189,7 +207,8 @@ mod sistema_votacion {
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::Cerrada,  Self::env().block_timestamp())?;
             let mut eleccion = self.elecciones.swap_remove(eleccion_index);
             if eleccion.votos.is_empty() {
-                return Err(ErrorSistema::NoHayVotos{ msg: "La lista de votos de candidatos esta vacia.".to_owned() })
+                self.elecciones_finiquitadas.push(eleccion.clone());
+                return Ok(CandidatoVotos::new("Vacio".to_owned(), "Vacio".to_owned()))
             }
             eleccion.votos.sort_by_key(|candidato| candidato.votos_recaudados);
             eleccion.votos.reverse();
@@ -240,7 +259,7 @@ mod sistema_votacion {
 
             let timestamp = Self::env().block_timestamp();
 
-            let elecciones = self.clonar_elecciones_historicas_a_interfaz(timestamp);
+            let elecciones = self.clonar_elecciones_historicas_a_interfaz();
             let elecciones = [
                 elecciones,
                 self.clonar_elecciones_actuales_a_interfaz(timestamp),
@@ -418,6 +437,10 @@ mod sistema_votacion {
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoVotacion,  Self::env().block_timestamp())?;
 
+            if self.elecciones[eleccion_index].votantes_votados.iter().any(|v| v.account_id == caller_user.account_id) {
+                return Err(ErrorSistema::VotanteYaVoto { msg: "El votante ya ha votado.".to_owned() })
+            }
+
             self.validar_votante_aprobado_en_eleccion(caller_user.account_id, eleccion_index)?;
 
             let candidato_index = self.validar_candidato_aprobado(candidato_dni, eleccion_index)?;
@@ -485,6 +508,7 @@ mod sistema_votacion {
                 vec.push(EleccionInterfaz::from_eleccion(
                     self.elecciones[i].get_estado_eleccion(timestamp),
                     self.elecciones[i].clone(),
+                    None
                 ));
             }
 
@@ -492,14 +516,15 @@ mod sistema_votacion {
         }
 
         //CREA UNA LISTA DE LAS ELECCIONES TERMINADAS DE LA FORMA QUE SE LEE ENE LA INTERFAZ//
-        fn clonar_elecciones_historicas_a_interfaz(&self, timestamp: u64) -> Vec<EleccionInterfaz>
+        fn clonar_elecciones_historicas_a_interfaz(&self) -> Vec<EleccionInterfaz>
         {
             let mut vec: Vec<EleccionInterfaz> = Vec::new();
 
             for i in 0..self.elecciones_finiquitadas.len() {
                 vec.push(EleccionInterfaz::from_eleccion(
-                    self.elecciones_finiquitadas[i].get_estado_eleccion(timestamp),
+                    EstadoEleccion::Finalizada,
                     self.elecciones_finiquitadas[i].clone(),
+                    Some(self.elecciones_finiquitadas[i].votos.clone())
                 ));
             }
 
@@ -531,11 +556,18 @@ mod sistema_votacion {
 
         fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
-            if self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1).is_none() { 
+            if let Some(num) = self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1) { 
+                self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados = num;
+            } else {
                 return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) 
             }
-             // (CREO) que si un candidato está en I posición del Vec de aprobados, siempre va a estar en I posicion del Vec de votos
-            // creo esto porque en el mismo proceso que apruebo un candidato (La función de arriba) pusheo el candidato a aprobados y también a votos, por ende creo que van a quedar estructuras idénticas con distintos tipo de datos
+
+            if let Some(votante_index) = self.elecciones[eleccion_index].votantes_aprobados.iter().position(|v| v.account_id == Self::env().caller()) {
+                let votante = self.elecciones[eleccion_index].votantes_aprobados[votante_index].clone();
+                self.elecciones[eleccion_index].votantes_votados.push(votante);
+            } else {
+                return Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante no existe.".to_owned() } } )
+            }
 
             Ok(())
         }
@@ -731,8 +763,13 @@ mod sistema_votacion {
                     },
                 }),
                 EstadoEleccion::Cerrada => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionCerrada {
+                        msg: "La elección ingresada se encuentra cerrada.".to_owned(),
+                    },
+                }),
+                EstadoEleccion::Finalizada => Err(ErrorSistema::ErrorDeEleccion {
                     error: ErrorEleccion::EleccionFinalizada {
-                        msg: "La elección ingresada se encuentra finiquitada.".to_owned(),
+                        msg: "La eleccion ingresada se encuentra finalizada.".to_owned(),
                     },
                 }),
             };
@@ -908,7 +945,7 @@ mod sistema_votacion {
         EleccionInvalida { msg: String },
         NoExisteEleccion { msg: String },
         ResultadosNoDisponibles { msg: String },
-        NoHayVotos { msg: String },
+        VotanteYaVoto { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
 
@@ -926,6 +963,7 @@ mod sistema_votacion {
 
         estado_eleccion: EstadoEleccion,
         candidatos_aprobados: Vec<Usuario>,
+        resultados: Option<Vec<CandidatoVotos>>
     }
 
     impl EleccionInterfaz {
@@ -936,6 +974,7 @@ mod sistema_votacion {
             fecha_cierre: Fecha,
             estado_eleccion: EstadoEleccion,
             candidatos_aprobados: Vec<Usuario>,
+            resultados: Option<Vec<CandidatoVotos>>
         ) -> Self {
             EleccionInterfaz {
                 eleccion_id,
@@ -944,10 +983,11 @@ mod sistema_votacion {
                 fecha_cierre,
                 estado_eleccion,
                 candidatos_aprobados,
+                resultados
             }
         }
 
-        fn from_eleccion(estado_eleccion: EstadoEleccion, eleccion: Eleccion) -> EleccionInterfaz {
+        fn from_eleccion(estado_eleccion: EstadoEleccion, eleccion: Eleccion, resultados: Option<Vec<CandidatoVotos>>) -> EleccionInterfaz {
             EleccionInterfaz::new(
                 eleccion.eleccion_id,
                 eleccion.cargo,
@@ -955,6 +995,7 @@ mod sistema_votacion {
                 eleccion.fecha_cierre_interfaz,
                 estado_eleccion,
                 eleccion.candidatos_aprobados,
+                resultados
             )
         }
     }
@@ -982,6 +1023,7 @@ mod sistema_votacion {
 
         pub votantes_aprobados: Vec<Usuario>,
         peticiones_votantes: Vec<Usuario>,
+        votantes_votados: Vec<Usuario>
     }
 
     impl Eleccion {
@@ -1007,6 +1049,7 @@ mod sistema_votacion {
                 peticiones_candidatos: Vec::new(),
                 votantes_aprobados: Vec::new(),
                 peticiones_votantes: Vec::new(),
+                votantes_votados: Vec::new(),
             }
         }
 
@@ -1034,7 +1077,7 @@ mod sistema_votacion {
 
 
     #[derive(Clone, Debug, PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub enum EstadoEleccion { PeriodoInscripcion, PeriodoVotacion, Cerrada }
+    pub enum EstadoEleccion { PeriodoInscripcion, PeriodoVotacion, Cerrada, Finalizada }
 
 
     #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -1044,6 +1087,7 @@ mod sistema_votacion {
 
         EleccionEnProcesoInscripcion { msg: String },
         EleccionEnProcesoVotacion { msg: String },
+        EleccionCerrada { msg: String },
         EleccionFinalizada { msg: String },
 
         CandidatoActualmenteAprobado { msg: String },
@@ -1057,23 +1101,7 @@ mod sistema_votacion {
 
     //////////////////////////////// VOTOS Y RESULTADOS ////////////////////////////////
 
-    #[derive(Clone, Debug)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadosEleccion {
-        cargo: String,
-        resultados: Vec<ResultadoCandidato>,
-    }
-
-    #[derive(Clone, Debug)]
-    #[ink::scale_derive(Encode, Decode, TypeInfo)]
-    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadoCandidato {
-        posicion: u8,
-        candidato: CandidatoVotos,
-    }
-
-    #[derive(Clone, Debug)]
+    #[derive(Clone, Debug, PartialEq)]
     #[ink::scale_derive(Encode, Decode, TypeInfo)]
     #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub struct CandidatoVotos {
@@ -1216,13 +1244,13 @@ mod sistema_votacion {
         ///En caso de necesitar años anteriores a 1970, el algoritmo esta capacitado, y solo se necesitaria cambiar los tipos de u64 a i64.
         ///
         ///El algoritmo en operaciones normales seria el siguiente:
-        ///```
+        ///
         ///let año_ajustado = año + 4800;
         ///let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
         ///let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
         ///let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
         ///((dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg) * 1000
-        ///```
+        ///
         ///Este algoritmo calcula la cantidad de febreros y en la variable de dias_intercalar se calculan 
         ///los febreros que tienen dias extras al estar en años bisiesto. Todos estos dias se suman a los dias
         ///normales que suceden en cada año pasado (años * 365), a el dia actual guardado en la fecha, y a la cantidad de dias

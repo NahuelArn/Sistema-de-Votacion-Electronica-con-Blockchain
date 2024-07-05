@@ -174,6 +174,14 @@ mod sistema_votacion
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
 
+            if let Err(error) = fecha_inicio.validar_fecha() {
+                return Err(ErrorSistema::FechaInicioInvalida{ error });
+            }
+
+            if let Err(error) = fecha_cierre.validar_fecha() {
+                return Err(ErrorSistema::FechaCierreInvalida{ error });
+            }
+
             if fecha_cierre.fecha_pasada(fecha_inicio.to_timestamp()) {
                 return Err(ErrorSistema::FechaCierreAntesInicio{ msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() });
             }
@@ -800,6 +808,8 @@ mod sistema_votacion
         NoSePoseenPermisos { msg: String },
         AccionUnicaDeUsuarios { msg: String },
         RepresentacionLimiteAlcanzada { msg: String },
+        FechaInicioInvalida { error: ErrorFecha },
+        FechaCierreInvalida { error: ErrorFecha },
         FechaInicioPasada { msg: String },
         FechaCierrePasada { msg: String },
         FechaCierreAntesInicio { msg: String },
@@ -1052,19 +1062,15 @@ mod sistema_votacion
 
     impl Fecha 
     {
-        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Result<Self, ErrorFecha> 
+        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self
         { 
-            let fecha = Fecha { dia, mes, año, hora, min, seg };
-            fecha.validar_fecha()?;
-
-            Ok( fecha )
-        }  
+            Fecha { dia, mes, año, hora, min, seg }
+        }
 
         ///VALIDA QUE LA FECHA INGRESADA EN NUMEROS SEA UNA FECHA CORRECTA Y EXISTENTE, TENIENDO EN CUENTA AÑOS BISIESTOS
         ///
         ///#Uso
         ///Llamar a esta funcion sobre una fecha devuelve un Result con un Ok vacio, en caso de ser valida, o un ErrorFecha en caso de no serlo.
-        ///Esta funcion es llamada durante la creacion de una nueva fecha, asi que si no hay cambios a una fecha creada, no es necesario volver a llamarla.
         ///
         ///#Funcionalidad
         ///Chequea que el mes este dentro del rango 1-12, que el dia este dentro de su rango dependiendo del mes actual y si el año es bisiesto o no.
@@ -1072,7 +1078,7 @@ mod sistema_votacion
         ///
         ///#Errores
         ///Devuelve variantes de ErrorFecha, dependiendo del primer error encontrado. Esto quiere decir que si hay mas de un error en una fecha ingresada,
-        ///devolvera solo el primer error. Si se valida otra fecha con el error solucionado, el siguiente error se devolvera, si es que queda alguno.
+        ///devolvera solo el primer error. Si se valida nuevamente la fecha con el error solucionado, el siguiente error se devolvera, si es que queda alguno.
         ///Los nombres de los errores siguen el patron Dia/Mes/Hora/Min/Seg Invalido, dependiendo de cual es el campo invalido.
         ///El año no puede ser invalido, por lo que no hay error que lo represente.
         fn validar_fecha(&self) -> Result<(), ErrorFecha>
@@ -1106,6 +1112,14 @@ mod sistema_votacion
         }
 
 
+        ///DEVUELVE SI EL AÑO DE LA FECHA ES BISIESTO
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha te devuelve un bool, donde true significa que el año si es bisiesto, y false que no
+        ///
+        ///#Funcionalidad
+        ///Para saber si un año es bisiesto, se ve si es divisible por 4 pero a si mismo no divisible por 100,
+        ///o si es divisible por 100 y por 400
         fn es_bisiesto(&self) -> bool {
             (self.año % 4 == 0 && !(self.año % 100 == 0)) || (self.año % 100 == 0 && self.año % 400 == 0)
         }
@@ -1131,11 +1145,12 @@ mod sistema_votacion
         }
 
         fn fecha_pasada(&self, hoy: u64) -> bool {
-            self.to_timestamp() < hoy
+            self.to_timestamp() <= hoy
         }
     }
 
 
+    #[derive(PartialEq, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorFecha
     {
         DiaInvalido { msg: String },

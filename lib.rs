@@ -1,12 +1,6 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 
-// El código obvio está incompleto, pero lo subo por las dudas para que esté en la nube
-
-
-
-
-
 #[ink::contract]
 mod sistema_votacion
 {
@@ -194,12 +188,12 @@ mod sistema_votacion
                 return Err(ErrorSistema::FechaCierrePasada{ msg: "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned() });
             }
             
-            self.check_add_elecciones_id()?;
             let eleccion = Eleccion::new(
                 self.elecciones_conteo_id, cargo,
                 fecha_inicio.to_timestamp(), fecha_cierre.to_timestamp(),
                 fecha_inicio, fecha_cierre
             );
+            self.check_add_elecciones_id()?;
 
             self.elecciones.push(eleccion);
 
@@ -315,6 +309,23 @@ mod sistema_votacion
 
             Ok( self.elecciones[eleccion_index].peticiones_candidatos.clone() )
         }
+
+
+        #[ink(message)]
+        pub fn get_votantes_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        {
+            self.get_candidatos_pendientes_priv(eleccion_id)
+        }
+
+        fn get_candidatos_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+
+            Ok( self.elecciones[eleccion_index].peticiones_votantes.clone() )
+        }
+
 
         ///PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION
         /// 
@@ -646,11 +657,12 @@ mod sistema_votacion
         //INCREMENTA EN 1 EL NUMERO DE IDS DE ELECCIONES, EN CASO DE DESBORDE LO INFORMA//
         fn check_add_elecciones_id(&mut self) -> Result<(), ErrorSistema> 
         {
-            let result = self.elecciones_conteo_id.checked_add(1);
-
-            if result.is_none() { return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_owned() } ); }
-        
-            Ok(())
+            if let Some(resultado) = self.elecciones_conteo_id.checked_add(1) {
+                self.elecciones_conteo_id = resultado;
+                Ok(())
+            } else {
+                Err(ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_owned() })
+            }
         }
 
 
@@ -665,9 +677,11 @@ mod sistema_votacion
         //VALIDA LA EXISTENCIA DE UNA ELECCION Y DEVUELVE SU POSICION EN EL VEC EN CASO CONTRARIO LO INFORMA//
         fn existe_eleccion(&self, eleccion_id: u64) -> Result<usize, ErrorSistema>
         {
-            if eleccion_id >= self.elecciones_conteo_id { return Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } } ); }
-            
-            self.get_index_eleccion(eleccion_id)
+            if eleccion_id > self.elecciones_conteo_id.saturating_sub(1) || self.elecciones_conteo_id == 0 { 
+                Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } } )
+            } else {
+                self.get_index_eleccion(eleccion_id)
+            }
         }
 
         //SE BUSCA LA POSICION DE UNA ELECCION EN LAS EN PROGRESO, SI LA ENCUENTRA SE DEVUELVE SINO INFORMA QUE LA ELECCION YA TERMINO//
@@ -752,7 +766,7 @@ mod sistema_votacion
         {
             if let Some(index) = self.get_candidato_pendiente(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
-            return match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
+            match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
@@ -788,8 +802,8 @@ mod sistema_votacion
         //SI NO ESTA DEVUELVE NONE
         fn get_candidato_pendiente(&self, candidato_dni: String, eleccion_index: usize) -> Option<usize>  
         {
-            for i in 0 .. self.elecciones[eleccion_index].candidatos_aprobados.len() {
-                if self.elecciones[eleccion_index].candidatos_aprobados[i].dni == candidato_dni { return Some(i); }
+            for i in 0 .. self.elecciones[eleccion_index].peticiones_candidatos.len() {
+                if self.elecciones[eleccion_index].peticiones_candidatos[i].dni == candidato_dni { return Some(i); }
             }
 
             None
@@ -915,18 +929,13 @@ mod sistema_votacion
 
         fn get_estado_eleccion(&self, timestamp: u64) -> EstadoEleccion
         {
-            let f_ini = self.fecha_inicio;
-            let f_crr = self.fecha_cierre;
-
-            let estado: EstadoEleccion;
-
-            if timestamp < f_ini { estado = EstadoEleccion::PeriodoInscripcion; }
-            
-            else if (timestamp > f_ini) && (timestamp < f_crr) { estado = EstadoEleccion::PeriodoVotacion; }
-
-            else { estado = EstadoEleccion::Cerrada; }
-
-            estado
+            if self.fecha_inicio > timestamp {
+                EstadoEleccion::PeriodoInscripcion
+            } else if self.fecha_cierre <= timestamp {
+                EstadoEleccion::Cerrada
+            } else {
+                EstadoEleccion::PeriodoVotacion
+            }
         }
     }
 

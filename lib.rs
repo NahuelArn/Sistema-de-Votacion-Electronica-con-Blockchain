@@ -216,7 +216,7 @@ mod tests {
         //Creamos el sistema de votacion
         ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
-        let mut sistema = SistemaVotacionRef::new("dante".to_string(), "7777".to_string());
+        let mut sistema = SistemaVotacion::new("dante".to_string(), "7777".to_string());
 
         //Registramos usuarios al sistema
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
@@ -225,15 +225,27 @@ mod tests {
         sistema.registrarse_en_sistema("Merlina".to_string(), "2222".to_string());
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
         sistema.registrarse_en_sistema("Federico".to_string(), "3333".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.frank);
+        sistema.registrarse_en_sistema("Juan".to_string(), "4444".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.eve);
+        sistema.registrarse_en_sistema("Luz".to_string(), "5555".to_string());
 
-        //Aprobamos a bob, alice y a charlie
+        //Aprobamos a los usuarios
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
         sistema.aprobar_usuario_sistema(accounts.alice);
         sistema.aprobar_usuario_sistema(accounts.bob);
         sistema.aprobar_usuario_sistema(accounts.charlie);
+        sistema.aprobar_usuario_sistema(accounts.frank);
+        sistema.aprobar_usuario_sistema(accounts.eve);
 
         //Creamos una eleccion
         sistema.crear_nueva_eleccion("Un cargo".to_string(), Fecha::new(12, 10, 2001, 20, 30, 00), Fecha::new(12, 10, 2001, 20, 30, 00));
+
+        //Agregamos 2 pendientes a candidatos a la eleccion
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.frank);
+        sistema.registrarse_a_eleccion(1, Rol::Candidato);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.eve);
+        sistema.registrarse_a_eleccion(1, Rol::Candidato);
         
         //Ponemos en espera de registro a bob, alice y charlie en dicha eleccion
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
@@ -243,22 +255,107 @@ mod tests {
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
         sistema.registrarse_a_eleccion(1, Rol::Votante);
 
-        //Aprobamos el registro de bob y alice como votantes
+        //Aprobamos a los votantes
         ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
         sistema.aprobar_votante_eleccion(1, "1111".to_string());
         sistema.aprobar_votante_eleccion(1, "2222".to_string());
+        sistema.aprobar_votante_eleccion(1, "3333".to_string());
 
-        //bob y alice votan
-        
+        //Aprobamos a los candidatos
+        sistema.aprobar_candidato_eleccion(1, "4444".to_string());
+        sistema.aprobar_candidato_eleccion(1, "5555".to_string());
+
+        //bob y alice votan a frank
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.votar_eleccion(1, "4444".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.votar_eleccion(1, "4444".to_string());
+
+        //charlie vota a eve
+        sistema.votar_eleccion(1, "5555".to_string());
 
         //Creamos el reporte con el sistema
         let reporte = Reporte::new(sistema);
 
+        //Finalizar eleccion
+
+        //Vector de Informe esperado
+
+        //Testear
+
     }
     
     #[ink::test]
-    fn reporte_participacion_test() {
+    fn test_reporte_resultado() {
+        let accounts = ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
         
+        //Creamos el sistema de votacion
+        ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        let mut sistema = SistemaVotacion::new("dante".to_string(), "7777".to_string());
+
+        //Registramos usuarios al sistema
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_en_sistema("Pepe".to_string(), "1111".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_en_sistema("Merlina".to_string(), "2222".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+        sistema.registrarse_en_sistema("Federico".to_string(), "3333".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.frank);
+        sistema.registrarse_en_sistema("Juan".to_string(), "4444".to_string());
+
+        //Aprobamos a los usuarios
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_usuario_sistema(accounts.alice);
+        sistema.aprobar_usuario_sistema(accounts.bob);
+        sistema.aprobar_usuario_sistema(accounts.charlie);
+        sistema.aprobar_usuario_sistema(accounts.frank);
+        sistema.aprobar_usuario_sistema(accounts.eve);
+
+        //Creamos una eleccion
+        sistema.crear_nueva_eleccion("Un cargo".to_string(), Fecha::new(12, 10, 2001, 20, 30, 00), Fecha::new(12, 10, 2001, 20, 30, 00));
+
+        //Agregamos 2 pendientes a candidatos a la eleccion
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.frank);
+        sistema.registrarse_a_eleccion(1, Rol::Candidato);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.eve);
+        sistema.registrarse_a_eleccion(1, Rol::Candidato);
+        
+        //Ponemos en espera de registro a bob, alice y charlie en dicha eleccion
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
+        sistema.registrarse_a_eleccion(1, Rol::Votante);
+
+        //Aprobamos a los votantes
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+        sistema.aprobar_votante_eleccion(1, "1111".to_string());
+        sistema.aprobar_votante_eleccion(1, "2222".to_string());
+        sistema.aprobar_votante_eleccion(1, "3333".to_string());
+
+        //Aprobamos a los candidatos
+        sistema.aprobar_candidato_eleccion(1, "4444".to_string());
+        sistema.aprobar_candidato_eleccion(1, "5555".to_string());
+
+        //bob y alice votan a frank
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+        sistema.votar_eleccion(1, "4444".to_string());
+        ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+        sistema.votar_eleccion(1, "4444".to_string());
+
+        //charlie vota a eve
+        sistema.votar_eleccion(1, "5555".to_string());
+
+        //Creamos el reporte con el sistema
+        let reporte = Reporte::new(sistema);
+
+        //Finalizar eleccion
+
+        //Vector de resultados esperados
+
+        //Testear
     }
 
 }

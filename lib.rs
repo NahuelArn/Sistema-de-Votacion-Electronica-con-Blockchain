@@ -1,27 +1,17 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
-
-
-// El código obvio está incompleto, pero lo subo por las dudas para que esté en la nube
-
-
-
-
+pub use self::sistema_votacion::*;
 
 #[ink::contract]
-mod sistema_votacion
-{
+mod sistema_votacion {
     ///////// USES /////////
-    use ink::prelude::vec::Vec;
-    use ink::prelude::string::String;
     use ink::prelude::borrow::ToOwned;
-
-
+    use ink::prelude::string::String;
+    use ink::prelude::vec::Vec;
 
     ///////// SISTEMA /////////
 
     #[ink(storage)]
-    pub struct SistemaVotacion
-    {
+    pub struct SistemaVotacion {
         admin_id: AccountId,
         usuarios_registados: Vec<Usuario>, // Usuarios ya aprobados
 
@@ -29,24 +19,16 @@ mod sistema_votacion
         elecciones_finiquitadas: Vec<Eleccion>,
         elecciones_conteo_id: u64,
 
-        resultados: Vec<ResultadosEleccion>, // Prefiero que esté en la elección pero para plantear
-
-        peticiones_registro: Vec<Usuario> // Peticiones en espera de aprobación
+        peticiones_registro: Vec<Usuario>, // Peticiones en espera de aprobación
     }
 
-    impl SistemaVotacion 
-    {
-
+    impl SistemaVotacion {
         //////////////////////////////////////// MESSAGES ////////////////////////////////////////
 
-
-
-        //////////////////// SISTEMA //////////////////// 
-
+        //////////////////// SISTEMA ////////////////////
 
         #[ink(constructor)]
         pub fn new(nombre_admin: String, dni_admin: String) -> Self {
-
             let admin_account_id = Self::env().caller();
             let admin_user = Usuario::new(admin_account_id, nombre_admin, dni_admin);
 
@@ -56,7 +38,6 @@ mod sistema_votacion
                 elecciones: Vec::new(),
                 elecciones_finiquitadas: Vec::new(),
                 elecciones_conteo_id: 0,
-                resultados: Vec::new(),
                 peticiones_registro: Vec::new()
             }
         }
@@ -77,7 +58,7 @@ mod sistema_votacion
         {
             let caller_id = Self::env().caller();
             self.consultar_inexistencia_usuario_en_sistema(caller_id)?;
-        
+
             let user = Usuario::new(caller_id, user_nombre, user_dni);
             self.registrar_en_cola_de_sistema(user);
 
@@ -97,7 +78,7 @@ mod sistema_votacion
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver las peticiones de registro.".to_owned())?;
 
-            Ok( self.peticiones_registro.clone() )
+            Ok(self.peticiones_registro.clone())
         }
 
         /// LE PERMITE AL ADMIN VALIDAR A UN USUARIO EN EL SISTEMA
@@ -143,27 +124,21 @@ mod sistema_votacion
             Ok(())
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////// ELECCIONES ////////////////////
 
         /// LE PERMITE AL ADMIN CREAR UNA NUEVA ELECCION
+        /// 
+        /// #uso
         /// La funcion recibe por parametro el cargo, fecha de inicio y fecha de cierre para la eleccion y devuelve un Result<(), ErrorSistema>
-        /// Si el usuario que invoca la funcion es el admin, se valida el incremento a los id de eleccion para evitar desbordes, se crea la nueva 
-        /// eleccion y se agrega a la lista de elecciones actuales
-        /// Se devuelve un ErrorSistema si quien invoca la funcion no es el admin
+        /// 
+        /// #funcionalidad
+        /// Si el usuario que invoca la funcion es el admin, y las fechas de inicio no es anterior al dia de la fecha y la de cierre no es anterior a la de inicio
+        /// se valida el incremento a los id de eleccion para evitar desbordes, se crea la nueva eleccion y se agrega a la lista de elecciones actuales.
+        /// 
+        /// #Errores
+        /// Se devuelve un ErrorSistema si quien invoca la funcion no es el admin, o si las fechas no cumplen las condiciones antes mencionadas
+        /// 
+        /// ...
         #[ink(message)]
         pub fn crear_nueva_eleccion(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
         {
@@ -173,25 +148,93 @@ mod sistema_votacion
         fn crear_nueva_eleccion_priv(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
+
+            if let Err(error) = fecha_inicio.validar_fecha() {
+                return Err(ErrorSistema::FechaInicioInvalida{ error });
+            }
+
+            if let Err(error) = fecha_cierre.validar_fecha() {
+                return Err(ErrorSistema::FechaCierreInvalida{ error });
+            }
+
+            if fecha_cierre.fecha_pasada(fecha_inicio.to_timestamp()) {
+                return Err(ErrorSistema::FechaCierreAntesInicio{ msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() });
+            }
+
+            if fecha_inicio.fecha_pasada(Self::env().block_timestamp()) {
+                return Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() });
+            }
+
+            if fecha_cierre.fecha_pasada(Self::env().block_timestamp()) {
+                return Err(ErrorSistema::FechaCierrePasada{ msg: "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned() });
+            }
             
-            self.check_add_elecciones_id()?;
             let eleccion = Eleccion::new(
-                self.elecciones_conteo_id, cargo,
-                fecha_inicio.to_timestamp(), fecha_cierre.to_timestamp(),
-                fecha_inicio, fecha_cierre
+                self.elecciones_conteo_id,
+                cargo,
+                fecha_inicio.to_timestamp(),
+                fecha_cierre.to_timestamp(),
+                fecha_inicio,
+                fecha_cierre,
             );
+            self.check_add_elecciones_id()?;
 
             self.elecciones.push(eleccion);
 
             Ok(())
         }
 
+
+        ///LE PERMITE AL ADMIN CERRAR UNA ELECCION FINALIZADA Y CONTAR LOS VOTOS
+        ///
+        ///#Uso
+        ///Al un admin llamar a la funcion con un id de una eleccion cerrada, pero que todavia esta dentro de la lista de elecciones activas,
+        ///esta es movida a la lista de elecciones finalizadas y los votos son contados.
+        ///Los candidatos quedan ordenados por cantidad de votos, de mayor a menor, dentro de el campo de votos en la eleccion.
+        ///El ganador tambien es devuelto con sus datos, como nombre, dni, y cantidad de votos.
+        ///Si no hay cantidatos o votos se devuelve un resultado vacio.
+        ///
+        ///#Funcionalidad
+        ///La funcion chequea si el caller es admin, despues encuentra la eleccion, si es que existe. Detecta si hay votos en la eleccion,
+        ///si no hay se devuelve un error, y si hay los ordena por cantidad de votos, de mayor a menor. Por ultimo mueve la eleccion a la
+        ///lista de elecciones finalizadas, y devuelve una copia de los datos del ganador.
+        ///
+        ///#Errores
+        ///Devuelve un error por la falta de privilegios de admin de ErrorSistem::NoPoseenPermisos, y un ErrorEleccion
+        ///para indicar una eleccion invalida.
+        #[ink(message)]
+        pub fn finalizar_y_contar_eleccion(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        {
+            self.finalizar_y_contar_eleccion_priv(eleccion_id)
+        }
+
+        fn finalizar_y_contar_eleccion_priv(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede finalizar y contar una eleccion.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::Cerrada,  Self::env().block_timestamp())?;
+            let mut eleccion = self.elecciones.swap_remove(eleccion_index);
+            if eleccion.votos.is_empty() {
+                self.elecciones_finiquitadas.push(eleccion.clone());
+                return Ok(CandidatoVotos::new("Vacio".to_owned(), "Vacio".to_owned()))
+            }
+            eleccion.votos.sort_by_key(|candidato| candidato.votos_recaudados);
+            eleccion.votos.reverse();
+            self.elecciones_finiquitadas.push(eleccion.clone());
+            Ok(eleccion.votos[0].clone())
+        }
+
+
+
         /// LE PERMITE A CUALQUIER USUARIO APROBADO ACCEDER A UNA LISTA DE LAS ELECCIONES EN CURSO
         /// 
+        /// #Uso
         /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
         /// 
+        /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones actuales en formato de interfaz y se retorna.
         /// 
+        /// #Errores
         /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
         /// 
         /// ...
@@ -204,16 +247,20 @@ mod sistema_votacion
         fn get_elecciones_actuales_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
         {
             self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
-            Ok( self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()) )
+            Ok(self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()))
         }
 
         /// LE PERMITE A CUALQUIER USUARIO APROBADO VER UNA LISTA DE TODAS LAS ELECCIONES FINALIZADAS
         /// 
+        /// #Uso
         /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
         /// 
+        /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones finalizadas en formato de interfaz y se retorna.
         /// 
+        /// #Errores
         /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
+        /// 
         /// ...
         #[ink(message)]
         pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
@@ -227,28 +274,52 @@ mod sistema_votacion
 
             let timestamp = Self::env().block_timestamp();
 
-            let elecciones = self.clonar_elecciones_historicas_a_interfaz(timestamp);
-            let elecciones = [elecciones, self.clonar_elecciones_actuales_a_interfaz(timestamp)].concat();
+            let elecciones = self.clonar_elecciones_historicas_a_interfaz();
+            let elecciones = [
+                elecciones,
+                self.clonar_elecciones_actuales_a_interfaz(timestamp),
+            ]
+            .concat();
 
-            Ok( elecciones )
+            Ok(elecciones)
+        }
+        #[ink(message)]
+        pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
+            if id as usize >= self.elecciones_finiquitadas.len() {
+                return Err(ErrorSistema::EleccionInvalida{
+                    msg: "La elección ingresada no existe.".to_owned()
+                });
+            }
+            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].candidatos_aprobados.clone();
+            Ok(elecciones_votantes)
+        }
+        #[ink(message)]
+        pub fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion> {
+            self.elecciones_finiquitadas.clone()
         }
     
         /// LE PERMITE A UN USUARIO APROBADO REGISTRARSE A UNA ELECCION
         /// 
         /// 
-        /// 
+        /// #Uso
         /// La funcion recibe por parametro el id de la eleccion para registrarse, el Rol en el que quiere presentarse y retorna un Result<(),ErrorSistema>
         /// 
+        /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario aprobado en el sistema y el id corresponde a una eleccion valida en periodo de inscripcion,
         /// el usuario que invoca la funcion es registrado a la espera de que el admin lo valide.
         /// 
+        /// #Errores
         /// Si el admin invoca la funcion, el usuario que invoca la funcion no esta aprobado o no esta registrado la funcion devuelve un ErrorSistema.
         /// 
         /// La funcion tambien devuelve un ErrorSistema si el id de la eleccion no es valido o es de una eleccion que no esta en periodo de inscripcion.
         /// 
         /// ....
         #[ink(message)]
-        pub fn registrarse_a_eleccion(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema> // Cómo identificar elección
+        pub fn registrarse_a_eleccion(
+            &mut self,
+            eleccion_id: u64,
+            rol: Rol,
+        ) -> Result<(), ErrorSistema> // Cómo identificar elección
         {
             self.registrarse_a_eleccion_priv(eleccion_id, rol)
         }
@@ -256,9 +327,13 @@ mod sistema_votacion
         fn registrarse_a_eleccion_priv(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema>
         {
             let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden registrarse a las elecciones.".to_owned())?;
+        
+            let eleccion_index = self.validar_eleccion(
+                eleccion_id,
+                EstadoEleccion::PeriodoInscripcion,
+                Self::env().block_timestamp(),
+            )?;
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
-            
             return self.registrar_peticion_eleccion(caller_user, rol, eleccion_index);
         }
 
@@ -296,6 +371,23 @@ mod sistema_votacion
             Ok( self.elecciones[eleccion_index].peticiones_candidatos.clone() )
         }
 
+
+        #[ink(message)]
+        pub fn get_votantes_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        {
+            self.get_votantes_pendientes_priv(eleccion_id)
+        }
+
+        fn get_votantes_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de votantes pendientes para las elecciones.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+
+            Ok( self.elecciones[eleccion_index].peticiones_votantes.clone() )
+        }
+
+
         ///PERMITE AL ADMIN APROBAR UN CANDIDATO A UNA ELECCION
         /// 
         /// #Uso
@@ -330,7 +422,43 @@ mod sistema_votacion
             Ok(())
         }
 
+        ///
+        #[ink(message)]
+        pub fn aprobar_votante_eleccion(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.aprobar_votante_eleccion_priv(eleccion_id, votante_dni)
+        }
+
+        fn aprobar_votante_eleccion_priv(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        {
+            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar votantes para las elecciones.".to_owned())?;
+
+            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+            let votante_index = self.validar_votante_en_pendientes(votante_dni, eleccion_index)?;
+
+            self.aprobar_votante(votante_index, eleccion_index);
+            Ok(())
+        }
+
+
         /// PERMITE AL USUARIO VOTAR EN UNA ELECCION EN LA QUE ESTE ACREDITADO, FALTA REVISAR LA EXISTENCIA DEL CANDIDATO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion recibe el id de una eleccion y el dni del candidato a votar, retorna un Result<(), ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// Se valida que quien invoca a la funcion sea un usuario aprobado que el id de la eleccion pertenezca a una eleccion en periodo de votacion,
+        /// luego de esto se valida que el usuario este aprobado como votante en esa eleccion y que el candidato este postulado, si se cumplen estas condiciones
+        /// se registra el voto.
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error pueden darse si quien invoca la funcion es el admin o si el usuario no esta aprobado como votante en la eleccion, 
+        /// si la eleccion no esta en periodo de votacion o si el candidato no esta postulado y aprobado
+        /// 
+        /// ...
         #[ink(message)]
         pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
         {
@@ -343,6 +471,10 @@ mod sistema_votacion
 
             let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoVotacion,  Self::env().block_timestamp())?;
 
+            if self.elecciones[eleccion_index].votantes_votados.iter().any(|v| v.account_id == caller_user.account_id) {
+                return Err(ErrorSistema::VotanteYaVoto { msg: "El votante ya ha votado.".to_owned() })
+            }
+
             self.validar_votante_aprobado_en_eleccion(caller_user.account_id, eleccion_index)?;
 
             let candidato_index = self.validar_candidato_aprobado(candidato_dni, eleccion_index)?;
@@ -350,27 +482,26 @@ mod sistema_votacion
             self.registrar_voto_a_candidato(candidato_index, eleccion_index)
         }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////////////////////////// PRIVATES ////////////////////////////////////////
-
-
 
         //////////////////// SISTEMA ////////////////////
 
-        //SE APRUEBA UN USUARIO EN EL SISTEMA//
+        ///SE APRUEBA UN USUARIO EN EL SISTEMA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca el AccountId proporcionado en la lista de peticiones de registro del sistema y se guarda la posicion del mismo
+        /// despues elemina al user de la lista de peticiones y lo agrega a la lista de usuarios validos
+        /// 
+        /// #Errores
+        /// 
+        /// La funcion no maneja errores ya que se filtran anteriormente
+        /// 
+        /// ...
         fn aprobar_usuario(&mut self, usuario_account_id: AccountId)
         {
             let index = self.get_usuario_en_peticiones_del_sistema(usuario_account_id);
@@ -378,12 +509,33 @@ mod sistema_votacion
             self.usuarios_registados.push(user);
         }
 
-        //SE AGREGA UN USUARIO A LA COLA DE ESPERA DEL SISTEMA//
+        /// SE AGREGA UN USUARIO A LA COLA DE ESPERA DEL SISTEMA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un Usuario
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion agrega al usuario recibido a la lista de peticiones de registro del sistema
+        /// 
+        /// ...
         fn registrar_en_cola_de_sistema(&mut self, user: Usuario) {
             self.peticiones_registro.push(user);
         }
 
-        // EN CASO DE QUE EL ADMIN ID NO ESTA REGISTRADO LO REGISTRA//
+        /// EN CASO DE QUE EL ADMIN ID NO ESTA REGISTRADO LO REGISTRA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId, un nombre y un dni
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion revisa que el accountId recibido este registrado o en peticiones del sistema, si no se encuntra en ninguna lista
+        /// lo registra y valida si esta en la lista de peticiones solo lo valida.
+        /// 
+        /// ...
         fn corregir_estado_nuevo_admin(&mut self, new_admin_id: AccountId, new_admin_nombre: String, new_admin_dni: String)
         {
             if self.get_usuario_registrado_en_sistema(new_admin_id).is_some() { return; }
@@ -397,86 +549,181 @@ mod sistema_votacion
             self.aprobar_usuario(new_admin_id);
         }
 
-
-
-
-
-
-
-
-
         //////////////////// ELECCIONES ////////////////////
 
-        //AGREGA A UN USUARIO A LA COLA DE ESPERA PARA SER VOTANTE O CANDIDATO EN UNA ELECCION//
-        //SI EL USUARIO YA ESTA REGISTRADO EN LA ELECCION SE INFORMA//
+        /// AGREGA A UN USUARIO A LA COLA DE ESPERA PARA SER VOTANTE O CANDIDATO EN UNA ELECCION
+        ///
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un Usuario, un Rol y usize, retorna un Result<(),ErrorSistema>
+        /// 
+        ///#Funcionalidad 
+        /// 
+        /// La funcion valida que el usuario no exista en la eleccion recibida y lo agrega a la lista de espera adecuada dependiendo de rol recibido
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el usuario ya esta registrado y aprobado en esta eleccion ya sea como votante o como candidato
+        /// 
+        /// ...
         fn registrar_peticion_eleccion(&mut self, user: Usuario, rol: Rol, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             self.validar_inexistencia_de_usuario_en_eleccion(user.account_id, rol.clone(), eleccion_index)?;
 
             match rol {
-                Rol::Votante   => self.elecciones[eleccion_index].peticiones_votantes.push(user),
-                Rol::Candidato => self.elecciones[eleccion_index].peticiones_candidatos.push(user)
+                Rol::Votante => self.elecciones[eleccion_index]
+                    .peticiones_votantes
+                    .push(user),
+                Rol::Candidato => self.elecciones[eleccion_index]
+                    .peticiones_candidatos
+                    .push(user),
             }
-            
+
             Ok(())
         }
 
-        //CREA UNA LISTA DE LAS ELECCIONES EN CURSO DE LA FORMA QUE SE LEE ENE LA INTERFAZ//
+        ///CREA UNA LISTA DE LAS ELECCIONES EN CURSO DE LA FORMA QUE SE LEE EN LA INTERFAZ
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un time stamp y retorna un Vec<EleccionInterfaz>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion crea un Vec<EleccionInterfaz> usando el la lista de elecciones actuales del sistema
+        /// 
+        /// #Errores
+        /// 
+        /// La funcion no maneja errores
+        /// 
+        /// ...
         fn clonar_elecciones_actuales_a_interfaz(&self, timestamp: u64) -> Vec<EleccionInterfaz>
         {
             let mut vec: Vec<EleccionInterfaz> = Vec::new();
 
-            for i in 0 .. self.elecciones.len()
-            {
-                vec.push(
-                    EleccionInterfaz::from_eleccion(
-                        self.elecciones[i].get_estado_eleccion(timestamp),
-                        self.elecciones[i].clone()
-                    )
-                );
+            for i in 0..self.elecciones.len() {
+                vec.push(EleccionInterfaz::from_eleccion(
+                    self.elecciones[i].get_estado_eleccion(timestamp),
+                    self.elecciones[i].clone(),
+                    None
+                ));
             }
 
             vec
         }
 
-        //CREA UNA LISTA DE LAS ELECCIONES TERMINADAS DE LA FORMA QUE SE LEE ENE LA INTERFAZ//
-        fn clonar_elecciones_historicas_a_interfaz(&self, timestamp: u64) -> Vec<EleccionInterfaz>
+        ///CREA UNA LISTA DE LAS ELECCIONES TERMINADAS DE LA FORMA QUE SE LEE ENE LA INTERFAZ
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un time stamp y retorna un Vec<EleccionInterfaz>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion crea un Vec<EleccionInterfaz> usando el la lista de elecciones pasadas del sistema
+        /// 
+        /// #Errores
+        /// 
+        /// La funcion no maneja errores
+        /// 
+        /// ...
+        fn clonar_elecciones_historicas_a_interfaz(&self) -> Vec<EleccionInterfaz>
         {
             let mut vec: Vec<EleccionInterfaz> = Vec::new();
 
-            for i in 0 .. self.elecciones_finiquitadas.len()
-            {
-                vec.push(
-                    EleccionInterfaz::from_eleccion(
-                        self.elecciones_finiquitadas[i].get_estado_eleccion(timestamp),
-                        self.elecciones_finiquitadas[i].clone()
-                    )
-                );
+            for i in 0..self.elecciones_finiquitadas.len() {
+                vec.push(EleccionInterfaz::from_eleccion(
+                    EstadoEleccion::Finalizada,
+                    self.elecciones_finiquitadas[i].clone(),
+                    Some(self.elecciones_finiquitadas[i].votos.clone())
+                ));
             }
 
             vec
         }
 
-        //APRUEBA UN CANDIDATO PARA PARTICIPAR EN UNA ELECCION//
-        //SI YA FUE APROBADO O NO EXISTE EN EL SISTEMA SE INFORMA//
+        ///APRUEBA UN CANDIDATO PARA PARTICIPAR EN UNA ELECCION
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe dos usize 
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion usa los usize proporcionados para buscar un candidato en la lista de candidatos pendientes y una eleccion en la lista de elecciones actuales,
+        /// lo elimina de esa lista y lo agrega a la lista de candidatos aprobados en la eleccion, tambien lo crea en la lista de votosxcandidato para que se lo pueda 
+        /// votar 
+        /// 
+        /// #Errores
+        /// 
+        /// La funcion no maneja errores
+        /// 
+        /// ...
         fn aprobar_candidato(&mut self, candidato_index: usize, eleccion_index: usize) 
         {
-            let e= &mut self.elecciones[eleccion_index];
+            let e = &mut self.elecciones[eleccion_index];
 
             let candidato = e.peticiones_candidatos.remove(candidato_index);
-            e.candidatos_aprobados.push( candidato.clone() );
+            e.candidatos_aprobados.push(candidato.clone());
 
             let candidato_votos = CandidatoVotos::new(candidato.nombre, candidato.dni);
-            e.votos.push( candidato_votos );
+            e.votos.push(candidato_votos);
         }
 
+        ///APRUEBA UN VOTANTE PARA PARTICIPAR EN UNA ELECCION
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe dos usize 
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion usa los usize proporcionados para buscar un votante en la lista de votantes pendientes y una eleccion en la lista de elecciones actuales,
+        /// lo elimina de esa lista y lo agrega a la lista de votantes aprobados en la eleccion. 
+        /// 
+        /// #Errores
+        /// 
+        /// La funcion no maneja errores
+        /// 
+        /// ...
+        fn aprobar_votante(&mut self, votante_index: usize, eleccion_index: usize) 
+        {
+            let e = &mut self.elecciones[eleccion_index];
+
+            let votante = e.peticiones_votantes.remove(votante_index);
+            e.votantes_aprobados.push(votante.clone());
+        }
+
+
+        /// SE REGISTRA UN VOTO DE UN VOTANTE VALIDO A UN CANDIDATO VALIDO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe dos usize, retorna un Result<(),ErrorSistema>  
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion le permite a un votante valido votar por un candidato valido, luego de emitir el voto el votante es agregado a la lista de votantes que ya votaron
+        /// de la eleccion
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el votante no es parte de los votantes habilitados a la eleccion o si ya se alcanzo el numero de votos maximos para un candidato
+        /// 
+        /// ...
         fn registrar_voto_a_candidato(&mut self, candidato_index: usize, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
-            if self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1).is_none() { 
+            if let Some(num) = self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1) { 
+                self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados = num;
+            } else {
                 return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) 
             }
-             // (CREO) que si un candidato está en I posición del Vec de aprobados, siempre va a estar en I posicion del Vec de votos
-            // creo esto porque en el mismo proceso que apruebo un candidato (La función de arriba) pusheo el candidato a aprobados y también a votos, por ende creo que van a quedar estructuras idénticas con distintos tipo de datos
+
+            if let Some(votante_index) = self.elecciones[eleccion_index].votantes_aprobados.iter().position(|v| v.account_id == Self::env().caller()) {
+                let votante = self.elecciones[eleccion_index].votantes_aprobados[votante_index].clone();
+                self.elecciones[eleccion_index].votantes_votados.push(votante);
+            } else {
+                return Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante no existe.".to_owned() } } )
+            }
 
             Ok(())
         }
@@ -484,49 +731,74 @@ mod sistema_votacion
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         //////////////////////////////////////// VALIDACIONES ////////////////////////////////////////
-
-
 
         //////////////////// SISTEMA ////////////////////
 
-        //CONFIRMA LOS PERMISOS DEL ADMIN//
+        ///CONFIRMA LOS PERMISOS DEL ADMIN
+        /// 
+        /// #Uso
+        /// La funcion es de uso interno del sistema, recibe un AccountId y un String y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion valida que el AccountId recibido sea el admin del sistema
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el AccountId recibido no es el admin, en  ese caso se devuelve el string recibido dentro del ErrorSistema
+        /// 
+        /// ...
         fn validar_permisos(&self, caller_id: AccountId, err_msg: String) -> Result<(), ErrorSistema> {
             if !self.es_admin(caller_id) { return Err( ErrorSistema::NoSePoseenPermisos { msg: err_msg } ); }
             Ok(())
         }
 
-        //INFORMA SI EL ID PROPORCIONADO ES EL ADMIN//
+        ///INFORMA SI EL ID PROPORCIONADO ES EL ADMIN
         fn es_admin(&self, caller_id: AccountId) -> bool { caller_id == self.admin_id }
 
-        //VALIDA SI EL USUARIO ES EL ADMIN O ESTA APROBADO, INFORMA EN CASO CONTRARIO//
+        /// VALIDA SI EL USUARIO ES EL ADMIN O ESTA APROBADO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion valida que el AccountId recibido sea de el admin o de un usuario aprobado en el sistema
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el AccountId recibido es de un usuario que auno no fue aprobado en el sistema o
+        /// de un usuario que aun no se registro en el sistema
+        /// 
+        /// ...
         fn validar_caller_como_admin_o_usuario_aprobado(&self, caller_id: AccountId) -> Result<(), ErrorSistema>
         {
             if self.es_admin(caller_id) { return Ok(()) }
 
             return match self.validar_usuario(caller_id) {
                 Ok(_) => Ok(()),
-                Err(e) => Err( e )
-            }
+                Err(e) => Err(e),
+            };
         }
 
-        //VALIDA QUE EL USUARIO ESTE APROBADO EN EL SISTEMA, DE SER EL CASO LO DEVUELVE//
+        /// VALIDA QUE EL USUARIO ESTE APROBADO EN EL SISTEMA, DE SER EL CASO LO DEVUELVE
+        /// 
+        /// #Uso 
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y un string y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion valida que el AccountId recibido sea el de un usuario aprobado en el sistema
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el AccountId proporcionado pertence a el adminm a un usuario no aprobado en el sistema o 
+        /// a un usuario no registrado en el sistema
+        /// 
+        /// ...
         fn validar_caller_como_usuario_aprobado(&self, caller_id: AccountId, admin_err_msg: String) -> Result<Usuario, ErrorSistema>
         {
             if self.es_admin(caller_id) { return Err( ErrorSistema::AccionUnicaDeUsuarios { msg: admin_err_msg } ); }
@@ -534,16 +806,40 @@ mod sistema_votacion
             self.validar_usuario(caller_id)
         }
 
-        //VALIDA QUE UN USUARIO ESTE REGISTRADO EN EL SISTEMA//
-        //EN CASO DE EXISTIR DEVUELVE UNA COPIA DEL USUARIO//
+        /// VALIDA QUE UN USUARIO ESTE REGISTRADO EN EL SISTEMA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Result<Usuario,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion usa el AccountId recibido para buscar la posicion de un Usuario en el sistema y devuelve una copia de ese usuario
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error de esta funcion son los mismo que los de la fn validar_usuario_en_sistema
         fn validar_usuario(&self, caller_id: AccountId) -> Result<Usuario, ErrorSistema>
         {
             let index = self.validar_usuario_en_sistema(caller_id)?;
-            Ok( self.usuarios_registados[index].clone() )
+            Ok(self.usuarios_registados[index].clone())
         }
 
-        //CONFIRMA LA NO EXISTENCIA DE UN USUARIO EN EL SISTEMA//
-        //DE EXISTIR LO INFORMA//
+        ///CONFIRMA LA NO EXISTENCIA DE UN USUARIO EN EL SISTEMA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion revisa en todas las lista del sistema para asegurarse de que el AccountId proporcionado no exista en ninguna
+        /// 
+        /// #Erroes
+        /// 
+        /// Los casos de error se dan cuando el AccountId se encuentra en alguna de las lista
+        /// 
+        /// ...
         fn consultar_inexistencia_usuario_en_sistema(&self, caller_id: AccountId) -> Result<(), ErrorSistema>
         {
             if self.es_admin(caller_id) { return Err( ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_owned() } ); }
@@ -554,8 +850,22 @@ mod sistema_votacion
             Ok(())
         }
 
-        //BUSCA UN USUARIO EN LA COLA DE PETICIONES DE REGISTRO//
-        //EN CASO DE NO EXISTIR O DE YA ESTAR REGISTRADO LO INFORMA//
+        ///BUSCA UN USUARIO EN LA COLA DE PETICIONES DE REGISTRO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion checkea que un AccountId este dentro de la lista de peticiones de registro del sistema
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el AccountId recibido ya forma parte de la lista de usuarios aprobados en el sistema o 
+        /// cuando el usuario no existe en el sistema
+        /// 
+        /// ...
         fn consultar_peticion_sistema(&self, user_id: AccountId) -> Result<(), ErrorSistema>
         {
             if self.existe_usuario_en_peticiones_del_sistema(user_id) { return Ok(()) }
@@ -566,17 +876,50 @@ mod sistema_votacion
             }
         }
 
-        //INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE PETICIONES DE REGISTRO//
+        ///INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE PETICIONES DE REGISTRO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un bool
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion retorna true cuando un usuario esta en la lista de peticiones de registro del sistema y false cuando no esta
+        /// 
+        /// ...
         fn existe_usuario_en_peticiones_del_sistema(&self, caller_id: AccountId) -> bool {
-            self.peticiones_registro.iter().any(|u| u.account_id == caller_id)
+            self.peticiones_registro
+                .iter()
+                .any(|u| u.account_id == caller_id)
         }
 
-        //INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE USUARIOS REGISTRADOS EN EL SISTEMA//
+        ///INFORMA SI UN DETERMINADO USUARIO EXISTE EN LA COLA DE USUARIOS REGISTRADOS EN EL SISTEMA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un bool
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion retorna true cuando un usuario esta en la lista de usuarios registrados del sistema y false cuando no esta
         fn existe_usuario_registrado_en_sistema(&self, caller_id: AccountId) -> bool {
-            self.usuarios_registados.iter().any(|u| u.account_id == caller_id)
+            self.usuarios_registados
+                .iter()
+                .any(|u| u.account_id == caller_id)
         }
 
-        //SE BUSCA Y RETORNA LA POSICION EN LA COLA DE UN USUARIO REGISTRADO ESPECIFICO EN CASO DE EXISTIR//
+        /// SE BUSCA Y RETORNA LA POSICION EN LA COLA DE UN USUARIO REGISTRADO ESPECIFICO EN CASO DE EXISTIR
+        /// 
+        /// #Use
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca la posicion del AccountId recibido en la lista de usuarios registrados en el sistema y si el accountId existe retorna su posicion
+        /// en caso contrario retorna None
+        /// 
+        /// ...
         fn get_usuario_registrado_en_sistema(&self, user_id: AccountId) -> Option<usize>
         {
             for i in 0 .. self.usuarios_registados.len() {
@@ -586,7 +929,18 @@ mod sistema_votacion
             None
         }
 
-        //SE BUSCA Y RETORNA LA POSICION EN LA COLA DE UN USUARIO NO REGISTRADO ESPECIFICO EN CASO DE EXISTIR//
+        /// SE BUSCA Y RETORNA LA POSICION EN LA COLA DE UN USUARIO NO REGISTRADO ESPECIFICO EN CASO DE EXISTIR
+        /// 
+        /// #Use
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca la posicion del AccountId recibido en la lista de usuarios pendientes en el sistema y si el accountId existe retorna su posicion
+        /// en caso contrario retorna None
+        /// 
+        /// ...
         fn get_usuario_en_peticiones_del_sistema(&self, user_id: AccountId) -> Option<usize>
         {
             for i in 0 .. self.peticiones_registro.len() {
@@ -596,9 +950,21 @@ mod sistema_votacion
             None
         }
 
-        //VALIDA LA EXISTENCIA DE UN USUARIO EN EL SISTEMA//
-        //EN CASO DE ESTAR REGISTRADO DEVUELVE SU POSICION EN LA COLA//
-        //EN CASO CONTRARIO INFORMA EL ESTADO ACTUAL DEL USUARIO//
+        ///VALIDA LA EXISTENCIA DE UN USUARIO EN EL SISTEMA
+        /// 
+        /// #Use
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y retorna un Result<usize,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca la posicion en la lista de usuarios registrados en el sistema del AccountId recibido y la retorna
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el AccountId aun no fue aprobado en el sistema o cuando el AccountId no existe en el sistema
+        /// 
+        /// ...
         fn validar_usuario_en_sistema(&self, caller_id: AccountId) -> Result<usize, ErrorSistema>
         {
             if let Some(index) = self.get_usuario_registrado_en_sistema(caller_id) { return Ok(index); }
@@ -606,52 +972,91 @@ mod sistema_votacion
             return match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
                 true =>  Err( ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_owned() } ),
                 false => Err( ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_owned() } )
+            };
+        }
+
+        //////////////////// ELECCIONES ////////////////////
+
+        ///INCREMENTA EN 1 EL NUMERO DE IDS DE ELECCIONES, EN CASO DE DESBORDE LO INFORMA
+        /// 
+        /// #Errores
+        /// 
+        /// El caso de error de la funcion se da cuando se alcanzo el numero maximo de representacion con un u64
+        /// 
+        /// ...
+        fn check_add_elecciones_id(&mut self) -> Result<(), ErrorSistema> 
+        {
+            if let Some(resultado) = self.elecciones_conteo_id.checked_add(1) {
+                self.elecciones_conteo_id = resultado;
+                Ok(())
+            } else {
+                Err(ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_owned() })
             }
         }
 
 
-
-
-
-
-
-
-
-
-
-
-
-        //////////////////// ELECCIONES ////////////////////
-
-        //INCREMENTA EN 1 EL NUMERO DE IDS DE ELECCIONES, EN CASO DE DESBORDE LO INFORMA//
-        fn check_add_elecciones_id(&mut self) -> Result<(), ErrorSistema> 
-        {
-            let result = self.elecciones_conteo_id.checked_add(1);
-
-            if result.is_none() { return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_owned() } ); }
-        
-            Ok(())
-        }
-
-
-        fn validar_eleccion(&mut self, eleccion_id: u64, estado_buscado: EstadoEleccion, timestamp: u64) -> Result<usize, ErrorSistema>
+        ///DEVUELVE LA POSICION EN LA LISTA DE ELECCIONES DE UNA ELECCION ESPECIFICA
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe dos u64 y un EstadoEleccion y retorna un Result<usize,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca la posicion en la lista de elecciones actuales de el id de eleccion recibido (U64) y si esta en el EstadoEleccion deseado los retorna
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error de esta funcion son los de las funciones fn existe_eleccion y fn consultar_estado_eleccion
+        /// 
+        /// ...
+        fn validar_eleccion(&mut self,eleccion_id: u64,estado_buscado: EstadoEleccion,timestamp: u64,) -> Result<usize, ErrorSistema> 
         {
             let eleccion_index = self.existe_eleccion(eleccion_id)?;
             self.consultar_estado_eleccion(estado_buscado, eleccion_index, timestamp)?;
 
-            Ok( eleccion_index )
+            Ok(eleccion_index)
         }
 
-        //VALIDA LA EXISTENCIA DE UNA ELECCION Y DEVUELVE SU POSICION EN EL VEC EN CASO CONTRARIO LO INFORMA//
+        ///VALIDA LA EXISTENCIA DE UNA ELECCION Y DEVUELVE SU POSICION EN EL VEC
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un u64 y retorna un Result<usize,ErrorSistema> 
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion checkea que el u64 pertenezca a los id de eleccion posibles en el sistema y retorna la posicion de la eleccion en la lista de elecciones
+        /// del sistema
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el u64 es mayor al el valor de eleccion_conteo_id del sistema, si este valor es 0 o si el id de la eleccion pertenece a una 
+        /// eleccion ya finalizada
+        /// 
+        /// ...
         fn existe_eleccion(&self, eleccion_id: u64) -> Result<usize, ErrorSistema>
         {
-            if eleccion_id >= self.elecciones_conteo_id { return Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } } ); }
-            
-            self.get_index_eleccion(eleccion_id)
+            if eleccion_id > self.elecciones_conteo_id.saturating_sub(1) || self.elecciones_conteo_id == 0 { 
+                Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } } )
+            } else {
+                self.get_index_eleccion(eleccion_id)
+            }
         }
 
-        //SE BUSCA LA POSICION DE UNA ELECCION EN LAS EN PROGRESO, SI LA ENCUENTRA SE DEVUELVE SINO INFORMA QUE LA ELECCION YA TERMINO//
-        //(SOLO SE USA EN CASO DE QUE LA ELECCION EXISTA)//
+        ///SE BUSCA LA POSICION DE UNA ELECCION EN LAS EN PROGRESO
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un u64 y retorna un Result<usize,ErrorSistema> 
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// la eleccion busca entre todas las elecciones actuales del sistema alguna con el mismo id que el recibido, si la encuentra devuelve la posicion de la misma
+        /// 
+        /// #Errores
+        /// 
+        /// El unico caso de error se da si la eleccion buscada no esta en la lista
         fn get_index_eleccion(&self, eleccion_id: u64) -> Result<usize, ErrorSistema>
         {
             for i in 0 .. self.elecciones.len()
@@ -662,59 +1067,142 @@ mod sistema_votacion
                 }
             }
 
-            Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionFinalizada { msg: "La id de elección ingresada ya finalizó.".to_owned() }} )
+            Err(ErrorSistema::ErrorDeEleccion {error: ErrorEleccion::EleccionFinalizada {msg: "La id de elección ingresada ya finalizó.".to_owned()}})
         }
 
-        //SE CONSULTA SI LA ELECCION ESTA EN EL ESTADO DESEADO EN CASO CONTRARIO SE INFORMA EL ESTADO ACTUAL DE LA ELECCION//
+        ///SE CONSULTA SI LA ELECCION ESTA EN EL ESTADO DESEADO EN CASO CONTRARIO SE INFORMA EL ESTADO ACTUAL DE LA ELECCION
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe dos u64 y un usize, retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion revisa si el id de eleccion proporcionado portenece a una eleccion en el estado recibido
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el estado de la eleccion no es el buscado
+        /// 
+        /// ...
         fn consultar_estado_eleccion(&mut self, estado_buscado: EstadoEleccion, eleccion_index: usize, timestamp: u64) -> Result<(), ErrorSistema>
         {
             let estado_eleccion = self.elecciones[eleccion_index].get_estado_eleccion(timestamp);
 
-            if estado_buscado == estado_eleccion { return Ok(()); }
+            if estado_buscado == estado_eleccion {
+                return Ok(());
+            }
 
             return match estado_eleccion {
-                EstadoEleccion::PeriodoInscripcion => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoInscripcion { msg: "La elección ingresada se encuentra en período de inscripción.".to_owned() } } ),
-                EstadoEleccion::PeriodoVotacion    => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoVotacion    { msg: "La elección ingresada se encuentra en período de votación.".to_owned() } } ),
-                EstadoEleccion::Cerrada            => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionFinalizada           { msg: "La elección ingresada se encuentra finiquitada.".to_owned() } } ),
+                EstadoEleccion::PeriodoInscripcion => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionEnProcesoInscripcion {
+                        msg: "La elección ingresada se encuentra en período de inscripción."
+                            .to_owned(),
+                    },
+                }),
+                EstadoEleccion::PeriodoVotacion => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionEnProcesoVotacion {
+                        msg: "La elección ingresada se encuentra en período de votación."
+                            .to_owned(),
+                    },
+                }),
+                EstadoEleccion::Cerrada => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionCerrada {
+                        msg: "La elección ingresada se encuentra cerrada.".to_owned(),
+                    },
+                }),
+                EstadoEleccion::Finalizada => Err(ErrorSistema::ErrorDeEleccion {
+                    error: ErrorEleccion::EleccionFinalizada {
+                        msg: "La eleccion ingresada se encuentra finalizada.".to_owned(),
+                    },
+                }),
             };
         }
 
-        //VALIDA QUE UN USUARIO NO EXISTA EN NINGUNA COLA DE ESPERA O LISTA DE VOTANTES/CANDIDATOS EN CASO CONTRARIO LO INFORMA//
+        /// VALIDA QUE UN USUARIO NO EXISTA EN NINGUNA COLA DE ESPERA O LISTA DE VOTANTES/CANDIDATOS 
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId, un rol y un usize y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion valida que un usuario no exista en ninguna lista de una eleccion
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el accountId ingresado pertenece a alguna lista dentro de la eleccion ya sea de pendientes a confirmacion o de usuarios confirmados
+        /// 
+        /// ... 
         fn validar_inexistencia_de_usuario_en_eleccion(&self, caller_id: AccountId, rol: Rol, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             let e = &self.elecciones[eleccion_index];
             let mut aprob_err_msg = None;
             let mut pet_err_msg = None;
 
-
-            if e.peticiones_votantes.iter().any(|p| p.account_id == caller_id) { pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned() ); }
-
-            else if e.votantes_aprobados.iter().any(|p| p.account_id == caller_id) { aprob_err_msg = Some( "Usted ya se encuentra aprobado para votante.".to_owned() ); }
-            
-            else if e.peticiones_candidatos.iter().any(|p| p.account_id == caller_id) { pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para candidato., debe esperar a ser aprobado".to_owned() ); }
-
-            else if e.candidatos_aprobados.iter().any(|p| p.account_id == caller_id) { aprob_err_msg = Some( "Usted ya se encuentra aprobado para candidato.".to_owned() ); }
-
-
-            if let Some(msg) = aprob_err_msg 
-            { 
-                return match rol {
-                    Rol::Votante   => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg } } ),
-                    Rol::Candidato => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg } } )
-                };
-            }
-            else if let Some(msg) = pet_err_msg
+            if e.peticiones_votantes
+                .iter()
+                .any(|p| p.account_id == caller_id)
             {
+                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned() );
+            } else if e
+                .votantes_aprobados
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                aprob_err_msg = Some("Usted ya se encuentra aprobado para votante.".to_owned());
+            } else if e
+                .peticiones_candidatos
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para candidato., debe esperar a ser aprobado".to_owned() );
+            } else if e
+                .candidatos_aprobados
+                .iter()
+                .any(|p| p.account_id == caller_id)
+            {
+                aprob_err_msg = Some("Usted ya se encuentra aprobado para candidato.".to_owned());
+            }
+
+            if let Some(msg) = aprob_err_msg {
                 return match rol {
-                    Rol::Votante   => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg } } ),
-                    Rol::Candidato => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg } } )
+                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
+                    }),
+                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
+                    }),
+                };
+            } else if let Some(msg) = pet_err_msg {
+                return match rol {
+                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
+                    }),
+                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
+                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
+                    }),
                 };
             }
 
             Ok(())
         }
 
-        // VALIDA QUE UN USUARIO ESTE VALIDADO COMO VOTANTE EN CASO CONTRARIO LO INFORMA//
+        /// VALIDA QUE UN USUARIO ESTE VALIDADO COMO VOTANTE
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un AccountId y un usize y retorna un Result<(),ErrorSistema>
+        /// 
+        /// #Funcinalidad
+        /// 
+        /// La funcion valida que el AccountId recibido pertenezca a la eleccion que se encuentra en la posicion recibida y este aprobado como votante en ella
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan cuando el accountId recibido no pertenece a un votante aprobado en la eleccion
+        /// 
+        /// ...
         fn validar_votante_aprobado_en_eleccion(&self, votante_id: AccountId, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             if self.elecciones[eleccion_index].votantes_aprobados.iter().any(|v| v.account_id == votante_id) { return Ok(()); }
@@ -723,37 +1211,97 @@ mod sistema_votacion
             return match self.elecciones[eleccion_index].peticiones_votantes.iter().any(|v| v.account_id == votante_id) {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoAprobado { msg: "Usted no fue aprobado para esta elección, no  tendrá permiso para votar.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } } )
-            }            
+            };
         }
 
-        //EL SISTEMA VALIDA QUE EL CANDIDATO A APROBAR ESTE EN LA LISTA DE CANDIDATOS PENDIENTES
-        //DE NO SER EL CASO LO INFORMA
+        ///EL SISTEMA VALIDA QUE EL CANDIDATO A APROBAR ESTE EN LA LISTA DE CANDIDATOS PENDIENTES
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Result<usize,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca el string recibido en la eleccion recibida y retorna la pocision del candidato con su dni= al String recibido
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el String pretenece a un candidato ya aprobado o no pertenece a ningun candidato
+        /// 
+        /// ...
         fn validar_candidato_en_pendientes(&self, candidato_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
         {
             if let Some(index) = self.get_candidato_pendiente(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
-            return match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
+            match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
         }
 
+        ///EL SISTEMA VALIDA QUE EL VOTANTE A APROBAR ESTE EN LA LISTA DE VOTANTES PENDIENTES
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Result<usize,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca el string recibido en la eleccion recibida y retorna la pocision del votante con su dni= al String recibido
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el String pretenece a un votante ya aprobado o no pertenece a ningun votante
+        /// 
+        /// ...
+        fn validar_votante_en_pendientes(&self, votante_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
+        {
+            if let Some(index) = self.get_votante_pendiente(votante_dni.clone(), eleccion_index) { return Ok(index) }
+
+            match self.get_votante_aprobado(votante_dni, eleccion_index).is_some() {
+                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "El votante ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
+                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante ingresado no existe en la elección.".to_owned() } } ),
+            }
+        }
+
     
-        //EL SISTEMA VALIDA QUE EL CANDIDATO SE EN CUANTRE EN LA LISTA DE CANDIDATOS APROBADOS
-        //SI NO LO ESTA SE INFORMA
+        ///EL SISTEMA VALIDA QUE EL CANDIDATO SE ENCUENTRE EN LA LISTA DE CANDIDATOS APROBADOS
+        /// 
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Result<usize,ErrorSistema>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca el string recibido en la eleccion recibida y retorna la pocision del candidato con su dni= al String recibido
+        /// 
+        /// #Errores
+        /// 
+        /// Los casos de error se dan si el String pretenece a un candidato no aprobado o no pertenece a ningun candidato
+        /// 
+        /// ...
         fn validar_candidato_aprobado(&self, candidato_dni: String, eleccion_index: usize) -> Result<usize, ErrorSistema>
         {
             if let Some(index) = self.get_candidato_aprobado(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
-            return match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
+            match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
                 true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoAprobado { msg: "El candidato ingresado está en espera de aprobación.".to_owned() } } ),
                 false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
             }
         }
 
-
-        //EL SISTEMA BUSCA AL CANDIDATO APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
-        //SI NO ESTA DEVUELVE NONE
+        ///EL SISTEMA BUSCA AL CANDIDATO APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
+        ///
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca en la lista de candidatos aprobados de una eleccion uno que tenga el dni = al string recibido y retorna su posicion,
+        /// si no lo encuntra retorna un None
+        /// 
+        /// ...
         fn get_candidato_aprobado(&self, candidato_dni: String, eleccion_index: usize) -> Option<usize> 
         {
             for i in 0 .. self.elecciones[eleccion_index].candidatos_aprobados.len() {
@@ -763,13 +1311,65 @@ mod sistema_votacion
             None
         }
 
+        ///EL SISTEMA BUSCA AL VOTANTE APROBADO EN LA LISTA Y DEVUELVE SU POSICION EN EL VECTOR
+        ///
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca en la lista de votantes aprobados de una eleccion uno que tenga el dni = al string recibido y retorna su posicion,
+        /// si no lo encuntra retorna un None
+        /// 
+        /// ...
+        fn get_votante_aprobado(&self, votante_dni: String, eleccion_index: usize) -> Option<usize> 
+        {
+            for i in 0 .. self.elecciones[eleccion_index].votantes_aprobados.len() {
+                if self.elecciones[eleccion_index].votantes_aprobados[i].dni == votante_dni { return Some(i); }
+            }
+
+            None
+        }
+
         
-        //EL SISTEMA BUSCA A UN CANDIDATO EN LA LISTA DE CANDIDATOS PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
-        //SI NO ESTA DEVUELVE NONE
+        ///EL SISTEMA BUSCA A UN CANDIDATO EN LA LISTA DE CANDIDATOS PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
+        ///
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca en la lista de candidatos pendientes de una eleccion uno que tenga el dni = al string recibido y retorna su posicion,
+        /// si no lo encuntra retorna un None
+        /// 
+        /// ...
         fn get_candidato_pendiente(&self, candidato_dni: String, eleccion_index: usize) -> Option<usize>  
         {
-            for i in 0 .. self.elecciones[eleccion_index].candidatos_aprobados.len() {
-                if self.elecciones[eleccion_index].candidatos_aprobados[i].dni == candidato_dni { return Some(i); }
+            for i in 0 .. self.elecciones[eleccion_index].peticiones_candidatos.len() {
+                if self.elecciones[eleccion_index].peticiones_candidatos[i].dni == candidato_dni { return Some(i); }
+            }
+
+            None
+        }
+
+        ///EL SISTEMA BUSCA A UN VOTANTE EN LA LISTA DE VOTANTES PENDIENTES Y DEVUELVE SU POSICION EN EL VECTOR
+        ///
+        /// #Uso
+        /// 
+        /// La funcion es de uso interno del sistema, recibe un String y un usize y retorna un Option<usize>
+        /// 
+        /// #Funcionalidad
+        /// 
+        /// La funcion busca en la lista de votantes pendientes de una eleccion uno que tenga el dni = al string recibido y retorna su posicion,
+        /// si no lo encuntra retorna un None
+        /// 
+        /// ...
+        fn get_votante_pendiente(&self, votante_dni: String, eleccion_index: usize) -> Option<usize>  
+        {
+            for i in 0 .. self.elecciones[eleccion_index].peticiones_votantes.len() {
+                if self.elecciones[eleccion_index].peticiones_votantes[i].dni == votante_dni { return Some(i); }
             }
 
             None
@@ -788,26 +1388,17 @@ mod sistema_votacion
         NoSePoseenPermisos { msg: String },
         AccionUnicaDeUsuarios { msg: String },
         RepresentacionLimiteAlcanzada { msg: String },
-
+        FechaInicioInvalida { error: ErrorFecha },
+        FechaCierreInvalida { error: ErrorFecha },
+        FechaInicioPasada { msg: String },
+        FechaCierrePasada { msg: String },
+        FechaCierreAntesInicio { msg: String },
+        EleccionInvalida { msg: String },
+        NoExisteEleccion { msg: String },
+        ResultadosNoDisponibles { msg: String },
+        VotanteYaVoto { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     //////////////////////////////// ELECCIONES ////////////////////////////////
 
@@ -822,28 +1413,41 @@ mod sistema_votacion
         fecha_cierre: Fecha,
 
         estado_eleccion: EstadoEleccion,
-        candidatos_aprobados: Vec<Usuario>
+        candidatos_aprobados: Vec<Usuario>,
+        resultados: Option<Vec<CandidatoVotos>>
     }
 
     impl EleccionInterfaz {
         fn new(
-            eleccion_id: u64, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha,
-            estado_eleccion: EstadoEleccion, candidatos_aprobados: Vec<Usuario>
-        ) -> Self
-        {
-            EleccionInterfaz { 
-                eleccion_id, cargo, 
-                fecha_inicio, fecha_cierre,
-                estado_eleccion, candidatos_aprobados
+            eleccion_id: u64,
+            cargo: String,
+            fecha_inicio: Fecha,
+            fecha_cierre: Fecha,
+            estado_eleccion: EstadoEleccion,
+            candidatos_aprobados: Vec<Usuario>,
+            resultados: Option<Vec<CandidatoVotos>>
+        ) -> Self {
+            EleccionInterfaz {
+                eleccion_id,
+                cargo,
+                fecha_inicio,
+                fecha_cierre,
+                estado_eleccion,
+                candidatos_aprobados,
+                resultados
             }
         }
 
-        fn from_eleccion(estado_eleccion: EstadoEleccion, eleccion: Eleccion) -> EleccionInterfaz {
+        ///CREAR UNA ELECCION INTERFAZ A PARTIR DE UNA ELECCION INTERNA DEL SISTEMA
+        fn from_eleccion(estado_eleccion: EstadoEleccion, eleccion: Eleccion, resultados: Option<Vec<CandidatoVotos>>) -> EleccionInterfaz {
             EleccionInterfaz::new(
-                eleccion.eleccion_id, eleccion.cargo,
+                eleccion.eleccion_id,
+                eleccion.cargo,
                 eleccion.fecha_inicio_interfaz,
                 eleccion.fecha_cierre_interfaz,
-                estado_eleccion, eleccion.candidatos_aprobados
+                estado_eleccion,
+                eleccion.candidatos_aprobados,
+                resultados
             )
         }
     }
@@ -852,11 +1456,11 @@ mod sistema_votacion
 
 
     #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    struct Eleccion
+    pub struct Eleccion
     {
         eleccion_id: u64, // Número alto de representación para un futuro sustento
 
-        cargo: String,  // Decido String en vez de ENUM debido a la inmensa cantidad de cargos posibles, al fin y al cabo, quien se encarga de esto es el administrador electoral
+        cargo: String, // Decido String en vez de ENUM debido a la inmensa cantidad de cargos posibles, al fin y al cabo, quien se encarga de esto es el administrador electoral
 
         fecha_inicio: Timestamp, // Dato pedido del profe
         fecha_cierre: Timestamp,
@@ -864,51 +1468,69 @@ mod sistema_votacion
         fecha_inicio_interfaz: Fecha,
         fecha_cierre_interfaz: Fecha,
 
-        votos: Vec<CandidatoVotos>,  // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzado
+        votos: Vec<CandidatoVotos>, // No se deben poder getterar hasta que el Timestamp de cierre haya sido alcanzado
 
         candidatos_aprobados: Vec<Usuario>,
         peticiones_candidatos: Vec<Usuario>,
 
-        votantes_aprobados: Vec<Usuario>,
-        peticiones_votantes: Vec<Usuario>
+        pub votantes_aprobados: Vec<Usuario>,
+        peticiones_votantes: Vec<Usuario>,
+        votantes_votados: Vec<Usuario>
     }
 
-    impl Eleccion
-    {
-        fn new(eleccion_id:u64, cargo: String, fecha_inicio: Timestamp, fecha_cierre: Timestamp, fecha_inicio_interfaz: Fecha, fecha_cierre_interfaz: Fecha) -> Self {
+    impl Eleccion {
+        fn new(
+            eleccion_id: u64,
+            cargo: String,
+            fecha_inicio: Timestamp,
+            fecha_cierre: Timestamp,
+            fecha_inicio_interfaz: Fecha,
+            fecha_cierre_interfaz: Fecha,
+        ) -> Self {
             Eleccion {
-                eleccion_id, cargo,
-                fecha_inicio, fecha_cierre,
-                fecha_inicio_interfaz, fecha_cierre_interfaz,
+                eleccion_id,
+                cargo,
+                fecha_inicio,
+                fecha_cierre,
+                fecha_inicio_interfaz,
+                fecha_cierre_interfaz,
 
                 votos: Vec::new(),
 
-                candidatos_aprobados: Vec::new(), peticiones_candidatos: Vec::new(),
-                votantes_aprobados: Vec::new(), peticiones_votantes: Vec::new()
+                candidatos_aprobados: Vec::new(),
+                peticiones_candidatos: Vec::new(),
+                votantes_aprobados: Vec::new(),
+                peticiones_votantes: Vec::new(),
+                votantes_votados: Vec::new(),
             }
         }
 
 
+        ///DEVUELVE UN ESTADOELECCION EN BASE A UN TIMESTAMP RECIBIDO
         fn get_estado_eleccion(&self, timestamp: u64) -> EstadoEleccion
         {
-            let f_ini = self.fecha_inicio;
-            let f_crr = self.fecha_cierre;
-
-            let estado: EstadoEleccion;
-
-            if timestamp < f_ini { estado = EstadoEleccion::PeriodoInscripcion; }
-            
-            else if (timestamp > f_ini) && (timestamp < f_crr) { estado = EstadoEleccion::PeriodoVotacion; }
-
-            else { estado = EstadoEleccion::Cerrada; }
-
-            estado
+            if self.fecha_inicio > timestamp {
+                EstadoEleccion::PeriodoInscripcion
+            } else if self.fecha_cierre <= timestamp {
+                EstadoEleccion::Cerrada
+            } else {
+                EstadoEleccion::PeriodoVotacion
+            }
+        }
+        pub fn get_eleccion_votos(&self) -> Vec<CandidatoVotos> {
+            self.votos.clone()
+        }
+        pub fn get_id(&self) -> u64 {
+            self.eleccion_id
+        }
+        pub fn get_cargo(&self) -> String {
+            self.cargo.clone()
         }
     }
 
 
     #[derive(Clone, Debug, PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub enum EstadoEleccion { PeriodoInscripcion, PeriodoVotacion, Cerrada }
+    pub enum EstadoEleccion { PeriodoInscripcion, PeriodoVotacion, Cerrada, Finalizada }
 
 
     #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
@@ -918,81 +1540,45 @@ mod sistema_votacion
 
         EleccionEnProcesoInscripcion { msg: String },
         EleccionEnProcesoVotacion { msg: String },
+        EleccionCerrada { msg: String },
         EleccionFinalizada { msg: String },
 
         CandidatoActualmenteAprobado { msg: String },
-        CandidatoNoAprobado { msg : String },
+        CandidatoNoAprobado { msg: String },
         CandidatoNoExiste { msg: String },
 
         VotanteActualmenteAprobado { msg: String },
-        VotanteNoAprobado { msg : String },
+        VotanteNoAprobado { msg: String },
         VotanteNoExiste { msg: String },
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     //////////////////////////////// VOTOS Y RESULTADOS ////////////////////////////////
 
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadosEleccion
-    {
-        cargo: String,
-        resultados: Vec<ResultadoCandidato>
-    }
-
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct ResultadoCandidato
-    {
-        posicion: u8,
-        candidato: CandidatoVotos
-    }
-
-
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
-    pub struct CandidatoVotos
-    {
+    #[derive(Clone, Debug, PartialEq)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct CandidatoVotos {
         candidato_nombre: String,
         candidato_dni: String,
         votos_recaudados: u64,
     }
 
-
-    impl CandidatoVotos
-    {
+    impl CandidatoVotos {
         fn new(candidato_nombre: String, candidato_dni: String) -> Self {
-            CandidatoVotos { candidato_nombre, candidato_dni, votos_recaudados: 0 }
+            CandidatoVotos {
+                candidato_nombre,
+                candidato_dni,
+                votos_recaudados: 0,
+            }
         }
+        pub fn get_votos_recaudados(&self) -> u64 {
+            self.votos_recaudados
+        }
+
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
     //////////////////////////////// USUARIOS ////////////////////////////////
-
+    
 
     #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum Rol { Votante, Candidato }
@@ -1003,32 +1589,18 @@ mod sistema_votacion
     {
         account_id: AccountId,
         nombre: String,
-        dni: String
+        dni: String,
     }
 
-
-    impl Usuario
-    {
+    impl Usuario {
         fn new(account_id: AccountId, nombre: String, dni: String) -> Self {
-            Usuario { account_id, nombre, dni }
+            Usuario {
+                account_id,
+                nombre,
+                dni,
+            }
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     ////////////////////////////// Fecha /////////////////////////////
 
@@ -1038,103 +1610,150 @@ mod sistema_votacion
 
     impl Fecha 
     {
-        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self //Result<Self, ErrorFecha> 
+        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self
         { 
-            /*let fecha =*/ Fecha { dia, mes, año, hora, min, seg }//;
-            //fecha.validar_fecha()?;
+            Fecha { dia, mes, año, hora, min, seg }
+        }
 
-            //Ok( fecha )
-        }    
-
-        /*
+        ///VALIDA QUE LA FECHA INGRESADA EN NUMEROS SEA UNA FECHA CORRECTA Y EXISTENTE, TENIENDO EN CUENTA AÑOS BISIESTOS
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha devuelve un Result con un Ok vacio, en caso de ser valida, o un ErrorFecha en caso de no serlo.
+        ///
+        ///#Funcionalidad
+        ///Chequea que el mes este dentro del rango 1-12, que el dia este dentro de su rango dependiendo del mes actual y si el año es bisiesto o no.
+        ///Tambien chequea que la hora, los minutos, y los segundos esten dentro de sus correspondientes rangos.
+        ///
+        ///#Errores
+        ///Devuelve variantes de ErrorFecha, dependiendo del primer error encontrado. Esto quiere decir que si hay mas de un error en una fecha ingresada,
+        ///devolvera solo el primer error. Si se valida nuevamente la fecha con el error solucionado, el siguiente error se devolvera, si es que queda alguno.
+        ///Los nombres de los errores siguen el patron Dia/Mes/Hora/Min/Seg Invalido, dependiendo de cual es el campo invalido.
+        ///El año no puede ser invalido, por lo que no hay error que lo represente.
         fn validar_fecha(&self) -> Result<(), ErrorFecha>
         {
-            let meses = Self::get_meses_del_año(self.año);
-            let hoy = Utc::now();
-
-            self.validar_tiempo(meses, hoy)?;
-
-            Ok(())
-        }
-
-
-        fn validar_tiempo(&self, meses: [u8;12], hoy: DateTime<Utc>) -> Result<(), ErrorFecha>  // Considero que para crear una elección debe ser como mínimo el día siguiente. (El admin no activa la elección, se activa "sola")
-        {
-            if self.dia <= hoy.day() as u8 || self.dia <= meses[self.mes as usize] { return Err( ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() } ); }
-            
-            if self.mes < hoy.month() as u8 || self.mes > 12                       { return Err( ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() } ); }
-            
-            if self.año < hoy.year() as u32                                        { return Err( ErrorFecha::AñoInvalido { msg: "El año ingresado es invalido.".to_owned() } ); }
-
-            if self.hora < hoy.hour() as u8 || self.hora > 23                      { return Err( ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned()} ); }
-
-            if self.min < hoy.minute() as u8 || self.min > 59                      { return Err( ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned()} ); }
-
-            if self.seg < hoy.second() as u8 || self.seg > 59                      { return Err( ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned()} ); }
-
-
-            Ok(())
-        }
-        
-
-        fn get_meses_del_año(año: u32) -> [u8; 12]
-        {
-            let feb = if Self::es_bisiesto(año) { 29 } else { 28 };
-
-            [30, feb, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        }
-
-
-        fn es_bisiesto(año: u32) -> bool {
-            año % 4 == 0 && (año % 100 != 0 || año % 400 == 0)
-        }
-        */
-
-
-
-        fn to_timestamp(&self) -> Timestamp
-        {
-            return 0;
-            /*
-            Utc.with_ymd_and_hms(
-                self.año as i32, 
-                self.mes as u32, 
-                self.mes as u32, 
-                self.hora as u32,
-                self.min as u32,
-                self.seg as u32
-            )
-            .unwrap() // Me doy el lujo de hacer unwrap debido a que ya efectué todas las validaciones necesarias al momento del "Fecha::new()"
-            .timestamp() as u64
-            */
-        }
-
-        /*
-        fn to_date(timestamp: Timestamp) -> Fecha
-        {
-            let date = DateTime::from_timestamp(timestamp as i64, 0).unwrap(); // Hago unwrap debido a que si falla será por causa de un problema de código, no de usuario
-
-            Fecha {
-                dia: date.day() as u8,
-                mes: date.month() as u8,
-                año: date.year() as u32,
-                hora: date.hour() as u8,
-                min: date.minute() as u8,
-                seg: date.second() as u8
+            if self.dia == 0 {
+                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
             }
+
+            if !match self.mes {
+                1 | 3 | 5 | 7 | 8 | 10 | 12 => self.dia <= 31,
+                4 | 6 | 9 | 11 => self.dia <= 30,
+                2 => self.dia <= if self.es_bisiesto() { 29 } else { 28 },
+                _ => { return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }); }
+            } {
+                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
+            }
+
+            if self.hora > 23 {
+                return Err( ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() });
+            }
+
+            if self.min > 59 {
+                return Err( ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() });
+            }
+
+            if self.seg > 59 {
+                return Err( ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() });
+            }
+
+            Ok(())
         }
-        */
+
+
+        ///DEVUELVE SI EL AÑO DE LA FECHA ES BISIESTO
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha te devuelve un bool, donde true significa que el año si es bisiesto, y false que no
+        ///
+        ///#Funcionalidad
+        ///Para saber si un año es bisiesto, se ve si es divisible por 4 pero a si mismo no divisible por 100,
+        ///o si es divisible por 100 y por 400
+        fn es_bisiesto(&self) -> bool {
+            (self.año % 4 == 0 && !(self.año % 100 == 0)) || (self.año % 100 == 0 && self.año % 400 == 0)
+        }
+
+
+        ///CONVIERTE LA FECHA A UNIX EPOCH TIMESTAMP EN MILISEGUNDOS
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha devuelve un u64 que es la representacion de la fecha en Unix Epoch Timestamp.
+        ///Este formato guarda una fecha en forma de los milisegundos pasados desde el primero de enero de 1970 a las 00:00:00 UTC.
+        ///
+        ///#Funcionalidad
+        ///El algoritmo usado fue traducido de uno de los algoritmos presentados en este articulo:
+        ///https://blog.reverberate.org/2020/05/12/optimizing-date-algorithms.html
+        ///
+        ///Todos los datos de la fecha son pasados a u64 previamente a hacer las operaciones para simplificar el codigo siguiente
+        ///y evitar multiples conversiones en el medio.
+        ///
+        ///Se usan las funciones saturating para sumar, restar, dividir, y multiplicar. Estas funciones realizan las operaciones normales,
+        ///pero impiden el overflow y el underflow, simplemente limitando los valores al rango valido para u64.
+        ///Overflow y underflow solo deberia suceder en casos extremos (años tan altos que la tierra ni existiria)
+        ///, o hasta en algunas operaciones es imposible si la fecha fue validada.
+        ///Estas funciones fueron usadas para complacer al linter, que mira hasta los casos extremos.
+        ///Los casos donde no se obtiene el timestamp correcto, son los años anteriores a 1970, ya que eso seria un timestamp
+        ///negativo. En este caso, por las funciones que previenen el overflow y el underflow, todos los años anteriores a 1970 dan un
+        ///timestamp de 0, que es suficiente para este sistema.
+        ///En caso de necesitar años anteriores a 1970, el algoritmo esta capacitado, y solo se necesitaria cambiar los tipos de u64 a i64.
+        ///
+        ///El algoritmo en operaciones normales seria el siguiente:
+        ///
+        ///let año_ajustado = año + 4800;
+        ///let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
+        ///let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
+        ///let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
+        ///((dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg) * 1000
+        ///
+        ///Este algoritmo calcula la cantidad de febreros y en la variable de dias_intercalar se calculan 
+        ///los febreros que tienen dias extras al estar en años bisiesto. Todos estos dias se suman a los dias
+        ///normales que suceden en cada año pasado (años * 365), a el dia actual guardado en la fecha, y a la cantidad de dias
+        ///que van transcurriendo en el año, segun el mes, usando la tabla ya que estos valores se saben.
+        ///Luego de todos estos calculos, se devuelve los dias, horas, minutos, y segundos, todos pasados a segundos y luego pasados
+        ///a milisegundos.
+        fn to_timestamp(&self) -> u64
+        {
+            let dia: u64 = self.dia.into();
+            let mes: u64 = self.mes.into();
+            let año: u64 = self.año.into();
+            let seg: u64 = self.seg.into();
+            let min: u64 = self.min.into();
+            let hora: u64 = self.hora.into();
+
+            let tabla = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+
+            let año_ajustado = año.saturating_add(4800);
+            let febreros = año_ajustado.saturating_sub(if mes <= 2 { 1 } else { 0 });
+            let dias_intercalar = 1_u64.saturating_add(febreros.saturating_div(4)).saturating_sub(febreros.saturating_div(100)).saturating_add(febreros.saturating_div(400));
+            let dias = año_ajustado.saturating_mul(365).saturating_add(dias_intercalar).saturating_add(tabla[(mes.saturating_sub(1)) as usize]).saturating_add(dia).saturating_sub(1);
+            dias.saturating_sub(2472692).saturating_mul(86400).saturating_add(hora.saturating_mul(3600)).saturating_add(min.saturating_mul(60)).saturating_add(seg).saturating_mul(1000)
+        }
+
+
+        ///DEVUELVE SI LA FECHA ES ANTERIOR A LA PASADA POR PARAMETRO
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha, pasando un timestamp, devuelve un bool, el cual señaliza si la fecha es anterior
+        ///o igual a la fecha representada por el timestamp pasado. Esto muestra si es una fecha que ya paso cierta otra fecha.
+        ///
+        ///#Funcionalidad
+        ///Se compara el timestamp de la fecha (en milisegundos) con otro timestamp, para ver si el primero es menor o igual al segundo.
+        ///Los timestamps estan en formato Unix Epoch Timestamp. Este formato guarda una fecha en forma de los milisegundos pasados desde el 
+        ///primero de enero de 1970 a las 00:00:00 UTC.
+        fn fecha_pasada(&self, timestamp: u64) -> bool {
+            self.to_timestamp() <= timestamp
+        }
     }
 
 
+    #[derive(PartialEq, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorFecha
     {
         DiaInvalido { msg: String },
         MesInvalido { msg: String },
         AñoInvalido { msg: String },
-        HoraInvalida { msg: String},
+        HoraInvalida { msg: String },
         MinInvalido { msg: String },
-        SegInvalido { msg: String }
+        SegInvalido { msg: String },
     }
 
     #[cfg(test)]
@@ -1197,9 +1816,13 @@ mod sistema_votacion
         fn test_crear_eleccion()
         {
             let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            
             ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            assert_eq!(Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 1600, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaCierreAntesInicio { msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2000, hora: 20, min: 30, seg: 00 }));
             assert_eq!(Ok(()),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Err(ErrorSistema::NoSePoseenPermisos { msg:"Sólo el administrador puede crear nuevas elecciones.".to_string()  }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
@@ -1215,6 +1838,7 @@ mod sistema_votacion
             let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
             ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
             sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
             assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
@@ -1227,7 +1851,10 @@ mod sistema_votacion
             assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
             assert_eq!(Err(ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_string() }),sistema.get_elecciones_actuales_priv());
-            //Se necesita testear las elecciones que ya terminaron, pero no esta el timestamp//
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
+            sistema.finalizar_y_contar_eleccion_priv(0);
+            assert_eq!(Ok(sistema.clonar_elecciones_historicas_a_interfaz()),sistema.get_elecciones_historial_priv());
         }
 
         #[allow(unused)]
@@ -1237,18 +1864,108 @@ mod sistema_votacion
             let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
             ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
             sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
-            assert_eq!(Err(ErrorSistema::AccionUnicaDeUsuarios{msg:"Sólo los usuarios pueden registrarse a las elecciones.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            assert_eq!(Err(ErrorSistema::AccionUnicaDeUsuarios{msg:"Sólo los usuarios pueden registrarse a las elecciones.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
-            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Candidato));
+            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.bob);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
+            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.alice);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Votante));
+            assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion {error: ErrorEleccion::VotanteActualmenteAprobado { msg:"Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned()}}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             //faltan todos los test para los que se necesita que el timestamp este funcionando
         }
+
+        #[allow(unused)]
+        #[ink::test]
+        fn test_aprobar_votante_candidato_en_eleccion()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.bob);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(()),sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err((ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } })),sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "Usted ya se encuentra aprobado para candidato.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.alice);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(()),sistema.aprobar_votante_eleccion(sistema.elecciones_conteo_id-1, "11111".to_owned()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "Usted ya se encuentra aprobado para votante.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            
+        }
+
+        #[allow(unused)]
+        #[ink::test]
+        fn test_votar_finalizar_eleccion()
+        {
+            let accounts=ink::env::test::default_accounts::<ink::env::DefaultEnvironment>();
+            ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.bob);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
+            sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_usuario_sistema(accounts.alice);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante);
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            sistema.aprobar_votante_eleccion(sistema.elecciones_conteo_id-1, "11111".to_owned());
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoInscripcion { msg: "La elección ingresada se encuentra en período de inscripción.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:12,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
+            assert_eq!(Ok(()),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorSistema::VotanteYaVoto { msg: "El votante ya ha votado.".to_owned() }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionCerrada { msg: "La elección ingresada se encuentra cerrada.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:12,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
+            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+        }
     }
-
+    
 }
-
-

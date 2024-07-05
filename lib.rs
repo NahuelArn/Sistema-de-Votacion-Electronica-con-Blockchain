@@ -1125,7 +1125,43 @@ mod sistema_votacion
         }
 
 
-
+        ///CONVIERTE LA FECHA A UNIX EPOCH TIMESTAMP EN MILISEGUNDOS
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha devuelve un u64 que es la representacion de la fecha en Unix Epoch Timestamp.
+        ///Este formato guarda una fecha en forma de los milisegundos pasados desde el primero de enero de 1970 a las 00:00:00 UTC.
+        ///
+        ///#Funcionalidad
+        ///El algoritmo usado fue traducido de uno de los algoritmos presentados en este articulo:
+        ///https://blog.reverberate.org/2020/05/12/optimizing-date-algorithms.html
+        ///
+        ///Todos los datos de la fecha son pasados a u64 previamente a hacer las operaciones para simplificar el codigo siguiente
+        ///y evitar multiples conversiones en el medio.
+        ///
+        ///Se usan las funciones saturating para sumar, restar, dividir, y multiplicar. Estas funciones realizan las operaciones normales,
+        ///pero impiden el overflow y el underflow, simplemente limitando los valores al rango valido para u64.
+        ///Overflow y underflow solo deberia suceder en casos extremos (años tan altos que la tierra ni existiria)
+        ///, o hasta en algunas operaciones es imposible si la fecha fue validada.
+        ///Estas funciones fueron usadas para complacer al linter, que mira hasta los casos extremos.
+        ///Los casos donde no se obtiene el timestamp correcto, son los años anteriores a 1970, ya que eso seria un timestamp
+        ///negativo. En este caso, por las funciones que previenen el overflow y el underflow, todos los años anteriores a 1970 dan un
+        ///timestamp de 0, que es suficiente para este sistema.
+        ///En caso de necesitar años anteriores a 1970, el algoritmo esta capacitado, y solo se necesitaria cambiar los tipos de u64 a i64.
+        ///
+        ///El algoritmo en operaciones normales seria el siguiente:
+        ```
+        ///let año_ajustado = año + 4800;
+        ///let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
+        ///let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
+        ///let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
+        ///((dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg) * 1000
+        ```
+        ///Este algoritmo calcula la cantidad de febreros y en la variable de dias_intercalar se calculan 
+        ///los febreros que tienen dias extras al estar en años bisiesto. Todos estos dias se suman a los dias
+        ///normales que suceden en cada año pasado (años * 365), a el dia actual guardado en la fecha, y a la cantidad de dias
+        ///que van transcurriendo en el año, segun el mes, usando la tabla ya que estos valores se saben.
+        ///Luego de todos estos calculos, se devuelve los dias, horas, minutos, y segundos, todos pasados a segundos y luego pasados
+        ///a milisegundos.
         fn to_timestamp(&self) -> u64
         {
             let dia: u64 = self.dia.into();
@@ -1144,8 +1180,19 @@ mod sistema_votacion
             dias.saturating_sub(2472692).saturating_mul(86400).saturating_add(hora.saturating_mul(3600)).saturating_add(min.saturating_mul(60)).saturating_add(seg).saturating_mul(1000)
         }
 
-        fn fecha_pasada(&self, hoy: u64) -> bool {
-            self.to_timestamp() <= hoy
+
+        ///DEVUELVE SI LA FECHA ES ANTERIOR A LA PASADA POR PARAMETRO
+        ///
+        ///#Uso
+        ///Llamar a esta funcion sobre una fecha, pasando un timestamp, devuelve un bool, el cual señaliza si la fecha es anterior
+        ///o igual a la fecha representada por el timestamp pasado. Esto muestra si es una fecha que ya paso cierta otra fecha.
+        ///
+        ///#Funcionalidad
+        ///Se compara el timestamp de la fecha (en milisegundos) con otro timestamp, para ver si el primero es menor o igual al segundo.
+        ///Los timestamps estan en formato Unix Epoch Timestamp. Este formato guarda una fecha en forma de los milisegundos pasados desde el 
+        ///primero de enero de 1970 a las 00:00:00 UTC.
+        fn fecha_pasada(&self, timestamp: u64) -> bool {
+            self.to_timestamp() <= timestamp
         }
     }
 

@@ -174,11 +174,15 @@ mod sistema_votacion
         {
             self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
 
-            if fecha_inicio.es_pasada(Self::env().block_timestamp()) {
+            if fecha_cierre.fecha_pasada(fecha_inicio.to_timestamp()) {
+                return Err(ErrorSistema::FechaCierreAntesInicio{ msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() });
+            }
+
+            if fecha_inicio.fecha_pasada(Self::env().block_timestamp()) {
                 return Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() });
             }
 
-            if fecha_cierre.es_pasada(Self::env().block_timestamp()) {
+            if fecha_cierre.fecha_pasada(Self::env().block_timestamp()) {
                 return Err(ErrorSistema::FechaCierrePasada{ msg: "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned() });
             }
             
@@ -798,6 +802,7 @@ mod sistema_votacion
         RepresentacionLimiteAlcanzada { msg: String },
         FechaInicioPasada { msg: String },
         FechaCierrePasada { msg: String },
+        FechaCierreAntesInicio { msg: String },
         ErrorDeEleccion { error: ErrorEleccion },
     }
 
@@ -1072,10 +1077,6 @@ mod sistema_votacion
         ///El año no puede ser invalido, por lo que no hay error que lo represente.
         fn validar_fecha(&self) -> Result<(), ErrorFecha>
         {
-            if self.mes > 12 || self.mes == 0 {
-                return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() });
-            }
-
             if self.dia == 0 {
                 return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
             }
@@ -1083,7 +1084,8 @@ mod sistema_votacion
             if !match self.mes {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => self.dia <= 31,
                 4 | 6 | 9 | 11 => self.dia <= 30,
-                2 => self.dia <= if self.es_bisiesto() { 29 } else { 28 }
+                2 => self.dia <= if self.es_bisiesto() { 29 } else { 28 },
+                _ => { return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }); }
             } {
                 return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
             }
@@ -1121,14 +1123,14 @@ mod sistema_votacion
 
             let tabla = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
 
-            let año_ajustado = año + 4800;
-            let febreros = año_ajustado - if mes <= 2 { 1 } else { 0 };
-            let dias_intercalar = 1 + (febreros / 4) - (febreros / 100) + (febreros / 400);
-            let dias = 365 * año_ajustado + dias_intercalar + tabla[(mes - 1) as usize] + dia - 1;
-            (dias - 2472692) * 86400 + hora * 3600 + min * 60 + seg
+            let año_ajustado = año.saturating_add(4800);
+            let febreros = año_ajustado.saturating_sub(if mes <= 2 { 1 } else { 0 });
+            let dias_intercalar = 1_u64.saturating_add(febreros.saturating_div(4)).saturating_sub(febreros.saturating_div(100)).saturating_add(febreros.saturating_div(400));
+            let dias = año_ajustado.saturating_mul(365).saturating_add(dias_intercalar).saturating_add(tabla[(mes.saturating_sub(1)) as usize]).saturating_add(dia).saturating_sub(1);
+            dias.saturating_sub(2472692).saturating_mul(86400).saturating_add(hora.saturating_mul(3600)).saturating_add(min.saturating_mul(60)).saturating_add(seg).saturating_mul(1000)
         }
 
-        fn fecha_pasada(&self, hoy: Timestamp) -> bool {
+        fn fecha_pasada(&self, hoy: u64) -> bool {
             self.to_timestamp() < hoy
         }
     }

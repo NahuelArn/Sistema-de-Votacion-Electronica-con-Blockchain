@@ -283,18 +283,28 @@ mod sistema_votacion {
 
             Ok(elecciones)
         }
+
+        ///
         #[ink(message)]
         pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
+            self.get_elecciones_terminadas_x_priv(id)
+        }
+
+        fn get_elecciones_terminadas_x_priv(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
             if id as usize >= self.elecciones_finiquitadas.len() {
                 return Err(ErrorSistema::EleccionInvalida{
                     msg: "La elección ingresada no existe.".to_owned()
                 });
             }
-            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].candidatos_aprobados.clone();
+            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].votantes_aprobados.clone();
             Ok(elecciones_votantes)
         }
         #[ink(message)]
         pub fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion> {
+            self.get_elecciones_finiquitadas_priv()
+        }
+
+        fn get_elecciones_finiquitadas_priv(&self) -> Vec<Eleccion> {
             self.elecciones_finiquitadas.clone()
         }
     
@@ -1455,7 +1465,7 @@ mod sistema_votacion {
 
 
 
-    #[derive(Clone, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    #[derive(Clone, Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub struct Eleccion
     {
         eleccion_id: u64, // Número alto de representación para un futuro sustento
@@ -1855,6 +1865,9 @@ mod sistema_votacion {
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             sistema.finalizar_y_contar_eleccion_priv(0);
             assert_eq!(Ok(sistema.clonar_elecciones_historicas_a_interfaz()),sistema.get_elecciones_historial_priv());
+            assert_eq!(sistema.elecciones_finiquitadas,sistema.get_elecciones_finiquitadas_priv());
+            assert_eq!(Ok(vec![Usuario::new(accounts.bob,"bob".to_string(),"12345".to_string())]),sistema.get_elecciones_terminadas_x(0));
+            assert_eq!(Err(ErrorSistema::EleccionInvalida{msg: "La elección ingresada no existe.".to_owned()}),sistema.get_elecciones_terminadas_x(4));
         }
 
         #[allow(unused)]
@@ -1888,7 +1901,7 @@ mod sistema_votacion {
             assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Votante));
             assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             assert_eq!(Err(ErrorSistema::ErrorDeEleccion {error: ErrorEleccion::VotanteActualmenteAprobado { msg:"Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned()}}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
-            //faltan todos los test para los que se necesita que el timestamp este funcionando
+            
         }
 
         #[allow(unused)]
@@ -1965,6 +1978,9 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:12,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
+            assert_eq!(Ok(CandidatoVotos{candidato_nombre:"bob".to_string(), candidato_dni:"12345".to_string(), votos_recaudados:1}),sistema.finalizar_y_contar_eleccion_priv(0));
         }
     }
     

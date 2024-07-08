@@ -1831,6 +1831,16 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
+            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error: ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 0, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error:ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err( ErrorSistema::FechaInicioInvalida{error:ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error: ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err( ErrorSistema::FechaInicioInvalida{error:ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error: ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 32, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error:ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err( ErrorSistema::FechaCierreInvalida{error:ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error: ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }));
+            assert_eq!(Err( ErrorSistema::FechaCierreInvalida{error:ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }));
             assert_eq!(Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 1600, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
             assert_eq!(Err(ErrorSistema::FechaCierreAntesInicio { msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2000, hora: 20, min: 30, seg: 00 }));
             assert_eq!(Ok(()),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
@@ -1889,18 +1899,22 @@ mod sistema_votacion {
             sistema.aprobar_usuario_sistema(accounts.bob);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned()}),sistema.get_candidatos_pendientes_priv(0));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
             assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(vec![Usuario::new(accounts.bob,"bob".to_string(),"12345".to_string())]),sistema.get_candidatos_pendientes_priv(0));
             sistema.aprobar_usuario_sistema(accounts.alice);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
             assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Votante));
             assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede ver la cola de votantes pendientes para las elecciones.".to_owned()}),sistema.get_votantes_pendientes_priv(0));
             assert_eq!(Err(ErrorSistema::ErrorDeEleccion {error: ErrorEleccion::VotanteActualmenteAprobado { msg:"Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned()}}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
-            
+            ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
+            assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_votantes_pendientes_priv(0));
         }
 
         #[allow(unused)]

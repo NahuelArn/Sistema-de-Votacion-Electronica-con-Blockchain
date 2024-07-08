@@ -1866,8 +1866,7 @@ mod sistema_votacion {
             sistema.finalizar_y_contar_eleccion_priv(0);
             assert_eq!(Ok(sistema.clonar_elecciones_historicas_a_interfaz()),sistema.get_elecciones_historial_priv());
             assert_eq!(sistema.elecciones_finiquitadas,sistema.get_elecciones_finiquitadas_priv());
-            assert_eq!(Ok(vec![Usuario::new(accounts.bob,"bob".to_string(),"12345".to_string())]),sistema.get_elecciones_terminadas_x(0));
-            assert_eq!(Err(ErrorSistema::EleccionInvalida{msg: "La elección ingresada no existe.".to_owned()}),sistema.get_elecciones_terminadas_x(4));
+            
         }
 
         #[allow(unused)]
@@ -1981,6 +1980,8 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Ok(CandidatoVotos{candidato_nombre:"bob".to_string(), candidato_dni:"12345".to_string(), votos_recaudados:1}),sistema.finalizar_y_contar_eleccion_priv(0));
+            assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
+            assert_eq!(Err(ErrorSistema::EleccionInvalida{msg: "La elección ingresada no existe.".to_owned()}),sistema.get_elecciones_terminadas_x(4));
         }
     }
     

@@ -188,9 +188,7 @@ mod reporte {
         feature = "std",
         derive(ink::scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
-    pub struct SistemaVotacionFakeG{
-        elecciones_finiquitadas: Vec<Eleccion>,
-    }
+    pub struct SistemaVotacionFakeG;
 
     impl Funciones for SistemaVotacionFakeG{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
@@ -198,13 +196,26 @@ mod reporte {
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            let mut elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+
+            let mut votos = vec![
+                CandidatoVotos::new("Jorge".to_string(), "999".to_string()), 
+                CandidatoVotos::new("Mara".to_string(), "888".to_string()), 
+                CandidatoVotos::new("Esteban".to_string(), "777".to_string())
+            ];
+            votos[0].set_votos_recaudados(5);
+            votos[1].set_votos_recaudados(19);
+            votos[2].set_votos_recaudados(3);
+
+            elec.set_votos(votos);
+
+            return vec![elec];
         } 
     }
 
     impl SistemaVotacionFakeG{
-        pub fn new(elecciones_finiquitadas: Vec<Eleccion>) -> Self{
-            Self{elecciones_finiquitadas}
+        pub fn new() -> Self{
+            Self{}
         }
     }
     //-----------------------------------------------------------------------------
@@ -214,9 +225,7 @@ mod reporte {
         feature = "std",
         derive(ink::scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
-    pub struct SistemaVotacionFakeH{
-        elecciones_finiquitadas: Vec<Eleccion>,
-    }
+    pub struct SistemaVotacionFakeH;
 
     impl Funciones for SistemaVotacionFakeH{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
@@ -229,8 +238,8 @@ mod reporte {
     }
 
     impl SistemaVotacionFakeH{
-        pub fn new(elecciones_finiquitadas: Vec<Eleccion>) -> Self{
-            Self{elecciones_finiquitadas}
+        pub fn new() -> Self{
+            Self{}
         }
     }
     //--------------------------------------------------------------------------------
@@ -240,9 +249,7 @@ mod reporte {
         feature = "std",
         derive(ink::scale_info::TypeInfo, ink::storage::traits::StorageLayout)
     )]
-    pub struct SistemaVotacionFakeI{
-        elecciones_finiquitadas: Vec<Eleccion>,
-    }
+    pub struct SistemaVotacionFakeI;
 
     impl Funciones for SistemaVotacionFakeI{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
@@ -250,13 +257,15 @@ mod reporte {
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            let elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+
+            return vec![elec];
         } 
     }
 
     impl SistemaVotacionFakeI{
-        pub fn new(elecciones_finiquitadas: Vec<Eleccion>) -> Self{
-            Self{elecciones_finiquitadas}
+        pub fn new() -> Self{
+            Self{}
         }
     }
     //---------------------------------------------------------------------------------
@@ -273,9 +282,9 @@ mod reporte {
         D(SistemaVotacionFakeD), //Reporte participacion retorna informe
         E(SistemaVotacionFakeE), //Reporte participacion retorna error por inexistencia de eleccion
         F(SistemaVotacionFakeF), //Reporte participacion retorna error por division por 0
-        G(SistemaVotacionFakeG), //Reporte participacion retorna error por desbordamiento
-        H(SistemaVotacionFakeH), //
-        I(SistemaVotacionFakeI), //
+        G(SistemaVotacionFakeG), //Reporte resultado retorna vec de CandidatoVotos ordenado 
+        H(SistemaVotacionFakeH), //Reporte resultado retorna error por inexistencia de eleccion
+        I(SistemaVotacionFakeI), //Reporte resultado retorna error por falta de votos
     }
 
     impl Funciones for SistemaMockeado{
@@ -578,7 +587,28 @@ mod reporte {
 
         #[ink::test]
         fn test_reporte_resultado(){
-
+            //Resultado vec con datos
+            let sistema1 = SistemaVotacionFakeG::new();
+            let mut reporte = Reporte::new_fake(SistemaMockeado::G(sistema1));
+            
+            let mut esperado = vec![ 
+                CandidatoVotos::new("Mara".to_string(), "888".to_string()), 
+                CandidatoVotos::new("Jorge".to_string(), "999".to_string()),
+                CandidatoVotos::new("Esteban".to_string(), "777".to_string())
+            ];
+            esperado[1].set_votos_recaudados(5);
+            esperado[0].set_votos_recaudados(19);
+            esperado[2].set_votos_recaudados(3);
+            assert_eq!(Ok(esperado), reporte.reporte_resultado(0));
+            //Resultado error por inexistencia de eleccion
+            let sistema2 = SistemaVotacionFakeH::new();
+            reporte.set_sistema(SistemaMockeado::H(sistema2));
+            assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
+            //Resultado error por falta de votos
+            let sistema3 = SistemaVotacionFakeI::new();
+            reporte.set_sistema(SistemaMockeado::I(sistema3));
+            assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
         }
     }
 }
+

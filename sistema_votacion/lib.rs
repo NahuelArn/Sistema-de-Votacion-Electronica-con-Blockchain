@@ -312,17 +312,21 @@ mod sistema_votacion {
 
         /// LE PERMITE A UN USUARIO APROBADO VER UNA LISTA DE LOS VOTANTES APROBADOS DE UNA ELECCION
         #[ink(message)]
-        pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorInterfaz> {
-            self.get_elecciones_terminadas_x_priv(id)
+        pub fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema> {
+            if id as usize >= self.elecciones_finiquitadas.len() {
+                return Err(ErrorSistema::EleccionInvalida);
+            }
+            let elecciones_buscada = self.elecciones_finiquitadas[id as usize].clone();
+            Ok(elecciones_buscada)
         }
 
-        fn get_elecciones_terminadas_x_priv(&self, id: u64) -> Result<Vec<Usuario>, ErrorInterfaz> {
-            if id as usize >= self.elecciones_finiquitadas.len() {
-                return Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida));
-            }
-            let elecciones_votantes = self.elecciones_finiquitadas[id as usize].votantes_aprobados.clone();
-            Ok(elecciones_votantes)
-        }
+        // fn get_elecciones_terminadas_x_priv(&self, id: u64) -> Result<Vec<Usuario>, ErrorInterfaz> {
+        //     if id as usize >= self.elecciones_finiquitadas.len() {
+        //         return Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida));
+        //     }
+        //     let elecciones_votantes = self.elecciones_finiquitadas[id as usize].votantes_aprobados.clone();
+        //     Ok(elecciones_votantes)
+        // }
         #[ink(message)]
         pub fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion> {
             self.get_elecciones_finiquitadas_priv()
@@ -1423,6 +1427,7 @@ mod sistema_votacion {
         FechaCierreAntesInicio,
         EleccionInvalida,
         VotanteYaVoto,
+        ResultadosNoDisponibles,
         ErrorDeEleccion(ErrorEleccion),
     }
 
@@ -1445,7 +1450,8 @@ mod sistema_votacion {
                 ErrorSistema::FechaCierreAntesInicio => "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned(),
                 ErrorSistema::EleccionInvalida => "La elección ingresada no existe.".to_owned(),
                 ErrorSistema::VotanteYaVoto => "El votante ya ha votado.".to_owned(),
-                ErrorSistema::ErrorDeEleccion(error) => error.to_string()
+                ErrorSistema::ErrorDeEleccion(error) => error.to_string(),
+                ErrorSistema::ResultadosNoDisponibles => "Los resultados de la elección no están disponibles.".to_owned(),
             }
         }
     }
@@ -1536,7 +1542,7 @@ mod sistema_votacion {
         candidatos_aprobados: Vec<Usuario>,
         peticiones_candidatos: Vec<Usuario>,
 
-        pub votantes_aprobados: Vec<Usuario>,
+        votantes_aprobados: Vec<Usuario>,
         peticiones_votantes: Vec<Usuario>,
         votantes_votados: Vec<Usuario>
     }
@@ -1582,6 +1588,15 @@ mod sistema_votacion {
         }
         pub fn get_eleccion_votos(&self) -> Vec<CandidatoVotos> {
             self.votos.clone()
+        }
+        // pub fn get_dimf_votantes_aprobados(&self)-> usize{
+        //     self.votantes_aprobados.len()
+        // }
+        pub fn get_votantes_aprobados(&self) -> Vec<Usuario> {
+            self.votantes_aprobados.clone()
+        }
+        pub fn get_votantes_registrados(&self) -> Vec<Usuario> {
+            self.peticiones_votantes.clone()
         }
         pub fn get_id(&self) -> u64 {
             self.eleccion_id

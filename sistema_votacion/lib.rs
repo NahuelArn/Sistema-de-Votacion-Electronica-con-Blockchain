@@ -859,10 +859,10 @@ mod sistema_votacion {
         {
             if self.es_admin(caller_id) { return Ok(()) }
 
-            return match self.validar_usuario(caller_id) {
+            match self.validar_usuario(caller_id) {
                 Ok(_) => Ok(()),
                 Err(e) => Err(e),
-            };
+            }
         }
 
         /// VALIDA QUE EL USUARIO ESTE APROBADO EN EL SISTEMA, DE SER EL CASO LO DEVUELVE
@@ -952,7 +952,7 @@ mod sistema_votacion {
         {
             if self.existe_usuario_en_peticiones_del_sistema(user_id) { return Ok(()) }
 
-            return match self.existe_usuario_registrado_en_sistema(user_id) { 
+            match self.existe_usuario_registrado_en_sistema(user_id) { 
                 true  => Err( ErrorSistema::UsuarioYaRegistrado),
                 false => Err( ErrorSistema::NoExisteUsuario)
             }
@@ -1051,10 +1051,10 @@ mod sistema_votacion {
         {
             if let Some(index) = self.get_usuario_registrado_en_sistema(caller_id) { return Ok(index); }
 
-            return match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
+            match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
                 true =>  Err( ErrorSistema::UsuarioNoAprobado),
                 false => Err( ErrorSistema::NoExisteUsuario)
-            };
+            }
         }
 
         //////////////////// ELECCIONES ////////////////////
@@ -1695,11 +1695,6 @@ mod sistema_votacion {
 
     impl Fecha 
     {
-        fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self
-        { 
-            Fecha { dia, mes, año, hora, min, seg }
-        }
-
         ///VALIDA QUE LA FECHA INGRESADA EN NUMEROS SEA UNA FECHA CORRECTA Y EXISTENTE, TENIENDO EN CUENTA AÑOS BISIESTOS
         ///
         ///#Uso
@@ -1754,7 +1749,7 @@ mod sistema_votacion {
         ///Para saber si un año es bisiesto, se ve si es divisible por 4 pero a si mismo no divisible por 100,
         ///o si es divisible por 100 y por 400
         fn es_bisiesto(&self) -> bool {
-            (self.año % 4 == 0 && !(self.año % 100 == 0)) || (self.año % 100 == 0 && self.año % 400 == 0)
+            (self.año % 4 == 0 && self.año % 100 != 0) || (self.año % 100 == 0 && self.año % 400 == 0)
         }
 
 

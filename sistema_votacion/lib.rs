@@ -6,6 +6,7 @@ mod sistema_votacion {
     ///////// USES /////////
     use ink::prelude::borrow::ToOwned;
     use ink::prelude::string::String;
+    use ink::prelude::string::ToString;
     use ink::prelude::vec::Vec;
 
     ///////// SISTEMA /////////

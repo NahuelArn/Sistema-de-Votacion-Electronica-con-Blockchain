@@ -45,19 +45,21 @@ mod sistema_votacion {
         /// PERMITE QUE UN USUARIO SE REGISTRE EN LA COLA DE ESPERA DEL SISTEMA
         /// Se le pasan por parametros el nombre del usuario y su DNI
         /// Y toma como AccountId al id del usuario que llama a la funcion
-        /// La funcion retorna un Result<(), ErrorSistema>
+        /// La funcion retorna un Result<(), ErrorInterfaz>
         /// los casos de error pueden ser si el usuario ya esta registrado en la cola de espera, si el usuario es el admin 
         /// o si el usuario ya fue aprobado en el sistema, si no se cumple ninguna de esas condiciones el usuario se registra en el sistema 
         #[ink(message)]
-        pub fn registrarse_en_sistema(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorSistema>
+        pub fn registrarse_en_sistema(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorInterfaz>
         {
             self.registrarse_en_sistema_priv(user_nombre, user_dni)
         }
 
-        fn registrarse_en_sistema_priv(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorSistema>
+        fn registrarse_en_sistema_priv(&mut self, user_nombre: String, user_dni: String) -> Result<(), ErrorInterfaz>
         {
             let caller_id = Self::env().caller();
-            self.consultar_inexistencia_usuario_en_sistema(caller_id)?;
+            if let Err(error) = self.consultar_inexistencia_usuario_en_sistema(caller_id) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             let user = Usuario::new(caller_id, user_nombre, user_dni);
             self.registrar_en_cola_de_sistema(user);
@@ -66,17 +68,19 @@ mod sistema_votacion {
         }
 
         ///LE PERMITE AL ADMIN VER UNA LISTA DE TODOS LOS USUARIOS EN LA COLA DE ESPERA DEL SISTEMA
-        /// La funcion no recibe parametros, y devuelve un Result<Vec<Usuario>,ErrorSistema>
+        /// La funcion no recibe parametros, y devuelve un Result<Vec<Usuario>,ErrorInterfaz>
         /// Retorna un error siempre que el usuario que invoque la funcion no sea el admin
         #[ink(message)]
-        pub fn get_peticiones_de_registro_sistema(&self) -> Result<Vec<Usuario>, ErrorSistema> 
+        pub fn get_peticiones_de_registro_sistema(&self) -> Result<Vec<Usuario>, ErrorInterfaz> 
         {
             self.get_peticiones_de_registro_sistema_priv()
         }
 
-        fn get_peticiones_de_registro_sistema_priv(&self) -> Result<Vec<Usuario>, ErrorSistema> 
+        fn get_peticiones_de_registro_sistema_priv(&self) -> Result<Vec<Usuario>, ErrorInterfaz> 
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver las peticiones de registro.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             Ok(self.peticiones_registro.clone())
         }
@@ -85,18 +89,23 @@ mod sistema_votacion {
         /// La funcion recibe como parametro el AccountId de un usuario
         /// Si quien invoca a la funcion es el admin, la funcion valida que el accountId por parametro este registrado en el sistema
         /// de ser el caso el usuario queda validado para acceder a las funcionalidades del mismo
-        /// si la llamada la realiza un usuario no admin la funcion devuelve un ErrorSistema
-        /// si el accountId ya fue validado o no existe en el sistema la funcion tambien devuelve un ErrorSistema
+        /// si la llamada la realiza un usuario no admin la funcion devuelve un ErrorInterfaz
+        /// si el accountId ya fue validado o no existe en el sistema la funcion tambien devuelve un ErrorInterfaz
         #[ink(message)]
-        pub fn aprobar_usuario_sistema(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorSistema>
+        pub fn aprobar_usuario_sistema(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorInterfaz>
         {
             self.aprobar_usuario_sistema_priv(usuar_account_id)
         }
 
-        fn aprobar_usuario_sistema_priv(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorSistema>
+        fn aprobar_usuario_sistema_priv(&mut self, usuar_account_id: AccountId) -> Result<(), ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar peticiones de usuarios para registro.".to_owned())?;
-            self.consultar_peticion_sistema(usuar_account_id)?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
+
+            if let Err(error) = self.consultar_peticion_sistema(usuar_account_id) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             self.aprobar_usuario(usuar_account_id);
 
@@ -104,19 +113,21 @@ mod sistema_votacion {
         }
 
         /// LE PERMITE AL ADMIN TRASPASAR SU ROL A OTRO USUARIO
-        /// La funcion recibe por parametros el AccountId, nombre y dni del nuevo admin y retorna un Result<(),ErrorSistema>
+        /// La funcion recibe por parametros el AccountId, nombre y dni del nuevo admin y retorna un Result<(),ErrorInterfaz>
         /// Si quien invoca la funcion es el admin la funcion registra al nuevo admin en caso de que no este registrado
         /// y despues reemplaza el accountId del admin actual por el accountId enviado por parametro
-        /// La funcion retorna un ErrorSistema si el usuario que la invoca no es el admin
+        /// La funcion retorna un ErrorInterfaz si el usuario que la invoca no es el admin
         #[ink(message)]
-        pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
+        pub fn delegar_admin(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorInterfaz>
         {
             self.delegar_admin_priv(nuevo_admin_acc_id, nuevo_admin_nombre, nuevo_admin_dni)
         }
 
-        fn delegar_admin_priv(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorSistema>
+        fn delegar_admin_priv(&mut self, nuevo_admin_acc_id: AccountId, nuevo_admin_nombre: String, nuevo_admin_dni: String) -> Result<(), ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede delegarle su rol a otra cuenta.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             self.corregir_estado_nuevo_admin(nuevo_admin_acc_id, nuevo_admin_nombre, nuevo_admin_dni);
 
@@ -129,44 +140,46 @@ mod sistema_votacion {
         /// LE PERMITE AL ADMIN CREAR UNA NUEVA ELECCION
         /// 
         /// #uso
-        /// La funcion recibe por parametro el cargo, fecha de inicio y fecha de cierre para la eleccion y devuelve un Result<(), ErrorSistema>
+        /// La funcion recibe por parametro el cargo, fecha de inicio y fecha de cierre para la eleccion y devuelve un Result<(), ErrorInterfaz>
         /// 
         /// #funcionalidad
         /// Si el usuario que invoca la funcion es el admin, y las fechas de inicio no es anterior al dia de la fecha y la de cierre no es anterior a la de inicio
         /// se valida el incremento a los id de eleccion para evitar desbordes, se crea la nueva eleccion y se agrega a la lista de elecciones actuales.
         /// 
         /// #Errores
-        /// Se devuelve un ErrorSistema si quien invoca la funcion no es el admin, o si las fechas no cumplen las condiciones antes mencionadas
+        /// Se devuelve un ErrorInterfaz si quien invoca la funcion no es el admin, o si las fechas no cumplen las condiciones antes mencionadas
         /// 
         /// ...
         #[ink(message)]
-        pub fn crear_nueva_eleccion(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
+        pub fn crear_nueva_eleccion(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorInterfaz>
         {
             self.crear_nueva_eleccion_priv(cargo,fecha_inicio,fecha_cierre)
         }
 
-        fn crear_nueva_eleccion_priv(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorSistema>
+        fn crear_nueva_eleccion_priv(&mut self, cargo: String, fecha_inicio: Fecha, fecha_cierre: Fecha) -> Result<(), ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede crear nuevas elecciones.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             if let Err(error) = fecha_inicio.validar_fecha() {
-                return Err(ErrorSistema::FechaInicioInvalida{ error });
+                return Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(error)));
             }
 
             if let Err(error) = fecha_cierre.validar_fecha() {
-                return Err(ErrorSistema::FechaCierreInvalida{ error });
+                return Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(error)));
             }
 
             if fecha_cierre.fecha_pasada(fecha_inicio.to_timestamp()) {
-                return Err(ErrorSistema::FechaCierreAntesInicio{ msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() });
+                return Err(ErrorInterfaz::new(ErrorSistema::FechaCierreAntesInicio));
             }
 
             if fecha_inicio.fecha_pasada(Self::env().block_timestamp()) {
-                return Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() });
+                return Err(ErrorInterfaz::new(ErrorSistema::FechaInicioPasada));
             }
 
             if fecha_cierre.fecha_pasada(Self::env().block_timestamp()) {
-                return Err(ErrorSistema::FechaCierrePasada{ msg: "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned() });
+                return Err(ErrorInterfaz::new(ErrorSistema::FechaCierrePasada));
             }
             
             let eleccion = Eleccion::new(
@@ -177,7 +190,10 @@ mod sistema_votacion {
                 fecha_inicio,
                 fecha_cierre,
             );
-            self.check_add_elecciones_id()?;
+
+            if let Err(error) = self.check_add_elecciones_id() {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             self.elecciones.push(eleccion);
 
@@ -203,16 +219,21 @@ mod sistema_votacion {
         ///Devuelve un error por la falta de privilegios de admin de ErrorSistem::NoPoseenPermisos, y un ErrorEleccion
         ///para indicar una eleccion invalida.
         #[ink(message)]
-        pub fn finalizar_y_contar_eleccion(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        pub fn finalizar_y_contar_eleccion(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorInterfaz>
         {
             self.finalizar_y_contar_eleccion_priv(eleccion_id)
         }
 
-        fn finalizar_y_contar_eleccion_priv(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorSistema>
+        fn finalizar_y_contar_eleccion_priv(&mut self, eleccion_id: u64) -> Result<CandidatoVotos, ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede finalizar y contar una eleccion.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::Cerrada,  Self::env().block_timestamp())?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::Cerrada,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
             let mut eleccion = self.elecciones.swap_remove(eleccion_index);
             if eleccion.votos.is_empty() {
                 self.elecciones_finiquitadas.push(eleccion.clone());
@@ -229,48 +250,52 @@ mod sistema_votacion {
         /// LE PERMITE A CUALQUIER USUARIO APROBADO ACCEDER A UNA LISTA DE LAS ELECCIONES EN CURSO
         /// 
         /// #Uso
-        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
+        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones actuales en formato de interfaz y se retorna.
         /// 
         /// #Errores
-        /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
+        /// La funcion devuelve un ErrorInterfaz si quien la invoca no esta registrado o validado en el sistema.
         /// 
         /// ...
         #[ink(message)]
-        pub fn get_elecciones_actuales(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema> 
+        pub fn get_elecciones_actuales(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorInterfaz> 
         {
             self.get_elecciones_actuales_priv()
         }
 
-        fn get_elecciones_actuales_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
+        fn get_elecciones_actuales_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorInterfaz>
         {
-            self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
+            if let Err(error) = self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
             Ok(self.clonar_elecciones_actuales_a_interfaz(Self::env().block_timestamp()))
         }
 
         /// LE PERMITE A CUALQUIER USUARIO APROBADO VER UNA LISTA DE TODAS LAS ELECCIONES FINALIZADAS
         /// 
         /// #Uso
-        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorSistema>
+        /// La funcion no recibe parametros y retorna un Result<Vec<EleccionInterfaz>,ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario valido en el sistema se genera un lista de las elecciones finalizadas en formato de interfaz y se retorna.
         /// 
         /// #Errores
-        /// La funcion devuelve un ErrorSistema si quien la invoca no esta registrado o validado en el sistema.
+        /// La funcion devuelve un ErrorInterfaz si quien la invoca no esta registrado o validado en el sistema.
         /// 
         /// ...
         #[ink(message)]
-        pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
+        pub fn get_elecciones_historial(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorInterfaz>
         {
             self.get_elecciones_historial_priv()
         }
 
-        fn get_elecciones_historial_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorSistema>
+        fn get_elecciones_historial_priv(&mut self) -> Result<Vec<EleccionInterfaz>, ErrorInterfaz>
         {
-            self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller())?;
+            if let Err(error) = self.validar_caller_como_admin_o_usuario_aprobado(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
             let timestamp = Self::env().block_timestamp();
 
@@ -286,15 +311,13 @@ mod sistema_votacion {
 
         /// LE PERMITE A UN USUARIO APROBADO VER UNA LISTA DE LOS VOTANTES APROBADOS DE UNA ELECCION
         #[ink(message)]
-        pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
+        pub fn get_elecciones_terminadas_x(&self, id: u64) -> Result<Vec<Usuario>, ErrorInterfaz> {
             self.get_elecciones_terminadas_x_priv(id)
         }
 
-        fn get_elecciones_terminadas_x_priv(&self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
+        fn get_elecciones_terminadas_x_priv(&self, id: u64) -> Result<Vec<Usuario>, ErrorInterfaz> {
             if id as usize >= self.elecciones_finiquitadas.len() {
-                return Err(ErrorSistema::EleccionInvalida{
-                    msg: "La elección ingresada no existe.".to_owned()
-                });
+                return Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida));
             }
             let elecciones_votantes = self.elecciones_finiquitadas[id as usize].votantes_aprobados.clone();
             Ok(elecciones_votantes)
@@ -312,16 +335,16 @@ mod sistema_votacion {
         /// 
         /// 
         /// #Uso
-        /// La funcion recibe por parametro el id de la eleccion para registrarse, el Rol en el que quiere presentarse y retorna un Result<(),ErrorSistema>
+        /// La funcion recibe por parametro el id de la eleccion para registrarse, el Rol en el que quiere presentarse y retorna un Result<(),ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// Si quien invoca la funcion es un usuario aprobado en el sistema y el id corresponde a una eleccion valida en periodo de inscripcion,
         /// el usuario que invoca la funcion es registrado a la espera de que el admin lo valide.
         /// 
         /// #Errores
-        /// Si el admin invoca la funcion, el usuario que invoca la funcion no esta aprobado o no esta registrado la funcion devuelve un ErrorSistema.
+        /// Si el admin invoca la funcion, el usuario que invoca la funcion no esta aprobado o no esta registrado la funcion devuelve un ErrorInterfaz.
         /// 
-        /// La funcion tambien devuelve un ErrorSistema si el id de la eleccion no es valido o es de una eleccion que no esta en periodo de inscripcion.
+        /// La funcion tambien devuelve un ErrorInterfaz si el id de la eleccion no es valido o es de una eleccion que no esta en periodo de inscripcion.
         /// 
         /// ....
         #[ink(message)]
@@ -329,22 +352,31 @@ mod sistema_votacion {
             &mut self,
             eleccion_id: u64,
             rol: Rol,
-        ) -> Result<(), ErrorSistema> // Cómo identificar elección
+        ) -> Result<(), ErrorInterfaz> // Cómo identificar elección
         {
             self.registrarse_a_eleccion_priv(eleccion_id, rol)
         }
 
-        fn registrarse_a_eleccion_priv(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorSistema>
+        fn registrarse_a_eleccion_priv(&mut self, eleccion_id: u64, rol: Rol) -> Result<(), ErrorInterfaz>
         {
-            let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden registrarse a las elecciones.".to_owned())?;
+            let caller_user = match self.validar_caller_como_usuario_aprobado(Self::env().caller()) {
+                Ok(user) => user,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
-            let eleccion_index = self.validar_eleccion(
+            let eleccion_index = match self.validar_eleccion(
                 eleccion_id,
                 EstadoEleccion::PeriodoInscripcion,
                 Self::env().block_timestamp(),
-            )?;
+            ) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
-            return self.registrar_peticion_eleccion(caller_user, rol, eleccion_index);
+            match self.registrar_peticion_eleccion(caller_user, rol, eleccion_index) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(ErrorInterfaz::new(error))
+            }
         }
 
         /// PERMITE AL ADMIN RECUPERAR LA LISTA DE TODOS LOS CANDIDATOS PENDIENTES
@@ -353,7 +385,7 @@ mod sistema_votacion {
         /// 
         /// #Uso
         /// 
-        /// La funcion recibe el id de la eleccion de la que se quieren obtener los candidatos pendientes y retorna un Result<Vec<Usuario>,ErrorSistema>
+        /// La funcion recibe el id de la eleccion de la que se quieren obtener los candidatos pendientes y retorna un Result<Vec<Usuario>,ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// 
@@ -367,32 +399,42 @@ mod sistema_votacion {
         /// 
         /// ... 
         #[ink(message)]
-        pub fn get_candidatos_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        pub fn get_candidatos_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorInterfaz>
         {
             self.get_candidatos_pendientes_priv(eleccion_id)
         }
 
-        fn get_candidatos_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        fn get_candidatos_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
             Ok( self.elecciones[eleccion_index].peticiones_candidatos.clone() )
         }
 
 
         #[ink(message)]
-        pub fn get_votantes_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        pub fn get_votantes_pendientes(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorInterfaz>
         {
             self.get_votantes_pendientes_priv(eleccion_id)
         }
 
-        fn get_votantes_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorSistema>
+        fn get_votantes_pendientes_priv(&mut self, eleccion_id: u64) -> Result<Vec<Usuario>, ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede ver la cola de votantes pendientes para las elecciones.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
             Ok( self.elecciones[eleccion_index].peticiones_votantes.clone() )
         }   
@@ -402,7 +444,7 @@ mod sistema_votacion {
         /// 
         /// #Uso
         /// 
-        /// La funcion recibe el id de la eleccion en la que se quiere aprobar un candidato y el dni del candidato a aprobar, retorna un Result<(),ErrorSistema>
+        /// La funcion recibe el id de la eleccion en la que se quiere aprobar un candidato y el dni del candidato a aprobar, retorna un Result<(),ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// 
@@ -416,17 +458,25 @@ mod sistema_votacion {
         /// 
         /// .
         #[ink(message)]
-        pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        pub fn aprobar_candidato_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorInterfaz>
         {
             self.aprobar_candidato_eleccion_priv(eleccion_id, candidato_dni)
         }
 
-        fn aprobar_candidato_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        fn aprobar_candidato_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar candidatos para las elecciones.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
-            let candidato_index = self.validar_candidato_en_pendientes(candidato_dni, eleccion_index)?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
+            let candidato_index = match self.validar_candidato_en_pendientes(candidato_dni, eleccion_index) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
             self.aprobar_candidato(candidato_index, eleccion_index);
             Ok(())
@@ -434,17 +484,25 @@ mod sistema_votacion {
 
         ///PERMITE AL ADMIN APROBAR UN VOTANTE A UNA ELECCION
         #[ink(message)]
-        pub fn aprobar_votante_eleccion(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        pub fn aprobar_votante_eleccion(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorInterfaz>
         {
             self.aprobar_votante_eleccion_priv(eleccion_id, votante_dni)
         }
 
-        fn aprobar_votante_eleccion_priv(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorSistema>
+        fn aprobar_votante_eleccion_priv(&mut self, eleccion_id: u64, votante_dni: String) -> Result<(), ErrorInterfaz>
         {
-            self.validar_permisos(Self::env().caller(), "Sólo el administrador puede aprobar votantes para las elecciones.".to_owned())?;
+            if let Err(error) = self.validar_permisos(Self::env().caller()) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp())?;
-            let votante_index = self.validar_votante_en_pendientes(votante_dni, eleccion_index)?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoInscripcion,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
+            let votante_index = match self.validar_votante_en_pendientes(votante_dni, eleccion_index) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
             self.aprobar_votante(votante_index, eleccion_index);
             Ok(())
@@ -455,7 +513,7 @@ mod sistema_votacion {
         /// 
         /// #Uso
         /// 
-        /// La funcion recibe el id de una eleccion y el dni del candidato a votar, retorna un Result<(), ErrorSistema>
+        /// La funcion recibe el id de una eleccion y el dni del candidato a votar, retorna un Result<(), ErrorInterfaz>
         /// 
         /// #Funcionalidad
         /// 
@@ -470,26 +528,40 @@ mod sistema_votacion {
         /// 
         /// ...
         #[ink(message)]
-        pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        pub fn votar_eleccion(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorInterfaz>
         {
             self.votar_eleccion_priv(eleccion_id, candidato_dni)
         }
 
-        fn votar_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorSistema>
+        fn votar_eleccion_priv(&mut self, eleccion_id: u64, candidato_dni: String) -> Result<(), ErrorInterfaz>
         {
-            let caller_user = self.validar_caller_como_usuario_aprobado(Self::env().caller(), "Sólo los usuarios pueden votar una elección.".to_owned())?;
+            let caller_user = match self.validar_caller_como_usuario_aprobado(Self::env().caller()) {
+                Ok(user) => user,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
-            let eleccion_index = self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoVotacion,  Self::env().block_timestamp())?;
+            let eleccion_index = match self.validar_eleccion(eleccion_id, EstadoEleccion::PeriodoVotacion,  Self::env().block_timestamp()) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
             if self.elecciones[eleccion_index].votantes_votados.iter().any(|v| v.account_id == caller_user.account_id) {
-                return Err(ErrorSistema::VotanteYaVoto { msg: "El votante ya ha votado.".to_owned() })
+                return Err(ErrorInterfaz::new(ErrorSistema::VotanteYaVoto))
             }
 
-            self.validar_votante_aprobado_en_eleccion(caller_user.account_id, eleccion_index)?;
+            if let Err(error) = self.validar_votante_aprobado_en_eleccion(caller_user.account_id, eleccion_index) {
+                return Err(ErrorInterfaz::new(error))
+            }
 
-            let candidato_index = self.validar_candidato_aprobado(candidato_dni, eleccion_index)?;
+            let candidato_index = match self.validar_candidato_aprobado(candidato_dni, eleccion_index) {
+                Ok(index) => index,
+                Err(error) => return Err(ErrorInterfaz::new(error))
+            };
 
-            self.registrar_voto_a_candidato(candidato_index, eleccion_index)
+            match self.registrar_voto_a_candidato(candidato_index, eleccion_index) {
+                Ok(_) => Ok(()),
+                Err(error) => Err(ErrorInterfaz::new(error))
+            }
         }
 
         //////////////////////////////////////// PRIVATES ////////////////////////////////////////
@@ -578,7 +650,7 @@ mod sistema_votacion {
         /// ...
         fn registrar_peticion_eleccion(&mut self, user: Usuario, rol: Rol, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
-            self.validar_inexistencia_de_usuario_en_eleccion(user.account_id, rol.clone(), eleccion_index)?;
+            self.validar_inexistencia_de_usuario_en_eleccion(user.account_id, eleccion_index)?;
 
             match rol {
                 Rol::Votante => self.elecciones[eleccion_index]
@@ -725,14 +797,14 @@ mod sistema_votacion {
             if let Some(num) = self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados.checked_add(1) { 
                 self.elecciones[eleccion_index].votos[candidato_index].votos_recaudados = num;
             } else {
-                return Err( ErrorSistema::RepresentacionLimiteAlcanzada { msg: "Se alcanzó el límite de representación para este voto.".to_owned() }) 
+                return Err(ErrorSistema::RepresentacionLimiteAlcanzada) 
             }
 
             if let Some(votante_index) = self.elecciones[eleccion_index].votantes_aprobados.iter().position(|v| v.account_id == Self::env().caller()) {
                 let votante = self.elecciones[eleccion_index].votantes_aprobados[votante_index].clone();
                 self.elecciones[eleccion_index].votantes_votados.push(votante);
             } else {
-                return Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante no existe.".to_owned() } } )
+                return Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteNoExiste))
             }
 
             Ok(())
@@ -759,8 +831,8 @@ mod sistema_votacion {
         /// Los casos de error se dan si el AccountId recibido no es el admin, en  ese caso se devuelve el string recibido dentro del ErrorSistema
         /// 
         /// ...
-        fn validar_permisos(&self, caller_id: AccountId, err_msg: String) -> Result<(), ErrorSistema> {
-            if !self.es_admin(caller_id) { return Err( ErrorSistema::NoSePoseenPermisos { msg: err_msg } ); }
+        fn validar_permisos(&self, caller_id: AccountId) -> Result<(), ErrorSistema> {
+            if !self.es_admin(caller_id) { return Err( ErrorSistema::NoSePoseenPermisos); }
             Ok(())
         }
 
@@ -809,9 +881,9 @@ mod sistema_votacion {
         /// a un usuario no registrado en el sistema
         /// 
         /// ...
-        fn validar_caller_como_usuario_aprobado(&self, caller_id: AccountId, admin_err_msg: String) -> Result<Usuario, ErrorSistema>
+        fn validar_caller_como_usuario_aprobado(&self, caller_id: AccountId) -> Result<Usuario, ErrorSistema>
         {
-            if self.es_admin(caller_id) { return Err( ErrorSistema::AccionUnicaDeUsuarios { msg: admin_err_msg } ); }
+            if self.es_admin(caller_id) { return Err( ErrorSistema::AccionUnicaDeUsuarios); }
 
             self.validar_usuario(caller_id)
         }
@@ -852,10 +924,10 @@ mod sistema_votacion {
         /// ...
         fn consultar_inexistencia_usuario_en_sistema(&self, caller_id: AccountId) -> Result<(), ErrorSistema>
         {
-            if self.es_admin(caller_id) { return Err( ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_owned() } ); }
+            if self.es_admin(caller_id) { return Err( ErrorSistema::AdminYaRegistrado); }
 
-            if self.existe_usuario_en_peticiones_del_sistema(caller_id) { return Err( ErrorSistema::UsuarioYaRegistradoEnPeticiones { msg: "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_owned() } ); }
-            if self.existe_usuario_registrado_en_sistema(caller_id) { return Err( ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema".to_owned() } ); }
+            if self.existe_usuario_en_peticiones_del_sistema(caller_id) { return Err( ErrorSistema::UsuarioYaRegistradoEnPeticiones); }
+            if self.existe_usuario_registrado_en_sistema(caller_id) { return Err( ErrorSistema::UsuarioYaRegistrado); }
 
             Ok(())
         }
@@ -881,8 +953,8 @@ mod sistema_votacion {
             if self.existe_usuario_en_peticiones_del_sistema(user_id) { return Ok(()) }
 
             return match self.existe_usuario_registrado_en_sistema(user_id) { 
-                true  => Err( ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema.".to_owned() } ),
-                false => Err( ErrorSistema::NoExisteUsuario { msg: "El usuario no existe en el sistema.".to_owned() } )
+                true  => Err( ErrorSistema::UsuarioYaRegistrado),
+                false => Err( ErrorSistema::NoExisteUsuario)
             }
         }
 
@@ -980,8 +1052,8 @@ mod sistema_votacion {
             if let Some(index) = self.get_usuario_registrado_en_sistema(caller_id) { return Ok(index); }
 
             return match self.existe_usuario_en_peticiones_del_sistema(caller_id) {
-                true =>  Err( ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_owned() } ),
-                false => Err( ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_owned() } )
+                true =>  Err( ErrorSistema::UsuarioNoAprobado),
+                false => Err( ErrorSistema::NoExisteUsuario)
             };
         }
 
@@ -1000,7 +1072,7 @@ mod sistema_votacion {
                 self.elecciones_conteo_id = resultado;
                 Ok(())
             } else {
-                Err(ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_owned() })
+                Err(ErrorSistema::RepresentacionLimiteAlcanzada)
             }
         }
 
@@ -1047,7 +1119,7 @@ mod sistema_votacion {
         fn existe_eleccion(&self, eleccion_id: u64) -> Result<usize, ErrorSistema>
         {
             if eleccion_id > self.elecciones_conteo_id.saturating_sub(1) || self.elecciones_conteo_id == 0 { 
-                Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } } )
+                Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::NoExisteEleccion))
             } else {
                 self.get_index_eleccion(eleccion_id)
             }
@@ -1076,11 +1148,7 @@ mod sistema_votacion {
                 }
             }
 
-            Err(ErrorSistema::ErrorDeEleccion {
-                error: ErrorEleccion::EleccionFinalizada {
-                    msg: "La id de elección ingresada ya finalizó.".to_owned(),
-                },
-            })
+            Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionFinalizada))
         }
 
         ///SE CONSULTA SI LA ELECCION ESTA EN EL ESTADO DESEADO EN CASO CONTRARIO SE INFORMA EL ESTADO ACTUAL DE LA ELECCION
@@ -1106,37 +1174,19 @@ mod sistema_votacion {
                 return Ok(());
             }
 
-            return match estado_eleccion {
-                EstadoEleccion::PeriodoInscripcion => Err(ErrorSistema::ErrorDeEleccion {
-                    error: ErrorEleccion::EleccionEnProcesoInscripcion {
-                        msg: "La elección ingresada se encuentra en período de inscripción."
-                            .to_owned(),
-                    },
-                }),
-                EstadoEleccion::PeriodoVotacion => Err(ErrorSistema::ErrorDeEleccion {
-                    error: ErrorEleccion::EleccionEnProcesoVotacion {
-                        msg: "La elección ingresada se encuentra en período de votación."
-                            .to_owned(),
-                    },
-                }),
-                EstadoEleccion::Cerrada => Err(ErrorSistema::ErrorDeEleccion {
-                    error: ErrorEleccion::EleccionCerrada {
-                        msg: "La elección ingresada se encuentra cerrada.".to_owned(),
-                    },
-                }),
-                EstadoEleccion::Finalizada => Err(ErrorSistema::ErrorDeEleccion {
-                    error: ErrorEleccion::EleccionFinalizada {
-                        msg: "La eleccion ingresada se encuentra finalizada.".to_owned(),
-                    },
-                }),
-            };
+            match estado_eleccion {
+                EstadoEleccion::PeriodoInscripcion => Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionEnProcesoInscripcion)),
+                EstadoEleccion::PeriodoVotacion => Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionEnProcesoVotacion)),
+                EstadoEleccion::Cerrada => Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionCerrada)),
+                EstadoEleccion::Finalizada => Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionFinalizada)),
+            }
         }
 
         // VALIDA QUE UN USUARIO NO EXISTA EN NINGUNA COLA DE ESPERA O LISTA DE VOTANTES/CANDIDATOS 
         /// 
         /// #Uso
         /// 
-        /// La funcion es de uso interno del sistema, recibe un AccountId, un rol y un usize y retorna un Result<(),ErrorSistema>
+        /// La funcion es de uso interno del sistema, recibe un AccountId y un usize y retorna un Result<(),ErrorSistema>
         /// 
         /// #Funcionalidad
         /// 
@@ -1147,58 +1197,21 @@ mod sistema_votacion {
         /// Los casos de error se dan cuando el accountId ingresado pertenece a alguna lista dentro de la eleccion ya sea de pendientes a confirmacion o de usuarios confirmados
         /// 
         /// ...      
-        fn validar_inexistencia_de_usuario_en_eleccion(&self, caller_id: AccountId, rol: Rol, eleccion_index: usize) -> Result<(), ErrorSistema>
+        fn validar_inexistencia_de_usuario_en_eleccion(&self, caller_id: AccountId, eleccion_index: usize) -> Result<(), ErrorSistema>
         {
             let e = &self.elecciones[eleccion_index];
-            let mut aprob_err_msg = None;
-            let mut pet_err_msg = None;
 
-            if e.peticiones_votantes
-                .iter()
-                .any(|p| p.account_id == caller_id)
-            {
-                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned() );
-            } else if e
-                .votantes_aprobados
-                .iter()
-                .any(|p| p.account_id == caller_id)
-            {
-                aprob_err_msg = Some("Usted ya se encuentra aprobado para votante.".to_owned());
-            } else if e
-                .peticiones_candidatos
-                .iter()
-                .any(|p| p.account_id == caller_id)
-            {
-                pet_err_msg = Some( "Usted ya se encuentra en la cola de peticiones para candidato., debe esperar a ser aprobado".to_owned() );
-            } else if e
-                .candidatos_aprobados
-                .iter()
-                .any(|p| p.account_id == caller_id)
-            {
-                aprob_err_msg = Some("Usted ya se encuentra aprobado para candidato.".to_owned());
+            if e.peticiones_votantes.iter().any(|p| p.account_id == caller_id) {
+                Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteEnPendiente))
+            } else if e.votantes_aprobados.iter().any(|p| p.account_id == caller_id) {
+                Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteActualmenteAprobado))
+            } else if e.peticiones_candidatos.iter().any(|p| p.account_id == caller_id) {
+                Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoEnPendiente))
+            } else if e.candidatos_aprobados.iter().any(|p| p.account_id == caller_id) {
+                Err(ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoActualmenteAprobado))
+            } else {
+                Ok(())
             }
-
-            if let Some(msg) = aprob_err_msg {
-                return match rol {
-                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
-                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
-                    }),
-                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
-                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
-                    }),
-                };
-            } else if let Some(msg) = pet_err_msg {
-                return match rol {
-                    Rol::Votante => Err(ErrorSistema::ErrorDeEleccion {
-                        error: ErrorEleccion::VotanteActualmenteAprobado { msg },
-                    }),
-                    Rol::Candidato => Err(ErrorSistema::ErrorDeEleccion {
-                        error: ErrorEleccion::CandidatoActualmenteAprobado { msg },
-                    }),
-                };
-            }
-
-            Ok(())
         }
 
         /// VALIDA QUE UN USUARIO ESTE VALIDADO COMO VOTANTE
@@ -1222,8 +1235,8 @@ mod sistema_votacion {
 
 
             return match self.elecciones[eleccion_index].peticiones_votantes.iter().any(|v| v.account_id == votante_id) {
-                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoAprobado { msg: "Usted no fue aprobado para esta elección, no  tendrá permiso para votar.".to_owned() } } ),
-                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } } )
+                true  => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteNoAprobado)),
+                false => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteNoExiste))
             };
         }
 
@@ -1247,8 +1260,8 @@ mod sistema_votacion {
             if let Some(index) = self.get_candidato_pendiente(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
             match self.get_candidato_aprobado(candidato_dni, eleccion_index).is_some() {
-                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
-                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
+                true  => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoActualmenteAprobado)),
+                false => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoNoExiste)),
             }
         }
 
@@ -1272,8 +1285,8 @@ mod sistema_votacion {
             if let Some(index) = self.get_votante_pendiente(votante_dni.clone(), eleccion_index) { return Ok(index) }
 
             match self.get_votante_aprobado(votante_dni, eleccion_index).is_some() {
-                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "El votante ingresado ya se encuentra actualmente aprobado.".to_owned() } } ),
-                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "El votante ingresado no existe en la elección.".to_owned() } } ),
+                true  => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteActualmenteAprobado)),
+                false => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteNoExiste)),
             }
         }
 
@@ -1298,8 +1311,8 @@ mod sistema_votacion {
             if let Some(index) = self.get_candidato_aprobado(candidato_dni.clone(), eleccion_index) { return Ok(index) }
 
             match self.get_candidato_pendiente(candidato_dni, eleccion_index).is_some() {
-                true  => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoAprobado { msg: "El candidato ingresado está en espera de aprobación.".to_owned() } } ),
-                false => Err( ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoNoExiste { msg: "El candidato ingresado no existe en la elección.".to_owned() } } ),
+                true  => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoNoAprobado)),
+                false => Err( ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoNoExiste)),
             }
         }
 
@@ -1394,23 +1407,60 @@ mod sistema_votacion {
     #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorSistema
     {
-        UsuarioYaRegistrado { msg: String },
-        UsuarioYaRegistradoEnPeticiones { msg: String },
-        NoExisteUsuario { msg: String },
-        UsuarioNoAprobado { msg: String },
-        NoSePoseenPermisos { msg: String },
-        AccionUnicaDeUsuarios { msg: String },
-        RepresentacionLimiteAlcanzada { msg: String },
-        FechaInicioInvalida { error: ErrorFecha },
-        FechaCierreInvalida { error: ErrorFecha },
-        FechaInicioPasada { msg: String },
-        FechaCierrePasada { msg: String },
-        FechaCierreAntesInicio { msg: String },
-        EleccionInvalida { msg: String },
-        NoExisteEleccion { msg: String },
-        ResultadosNoDisponibles { msg: String },
-        VotanteYaVoto { msg: String },
-        ErrorDeEleccion { error: ErrorEleccion },
+        UsuarioYaRegistrado,
+        AdminYaRegistrado,
+        UsuarioYaRegistradoEnPeticiones,
+        NoExisteUsuario,
+        UsuarioNoAprobado,
+        NoSePoseenPermisos,
+        AccionUnicaDeUsuarios,
+        RepresentacionLimiteAlcanzada,
+        FechaInicioInvalida(ErrorFecha),
+        FechaCierreInvalida(ErrorFecha),
+        FechaInicioPasada,
+        FechaCierrePasada,
+        FechaCierreAntesInicio,
+        EleccionInvalida,
+        VotanteYaVoto,
+        ErrorDeEleccion(ErrorEleccion),
+    }
+
+    impl ToString for ErrorSistema {
+        fn to_string(&self) -> String 
+        {
+            match self {
+                ErrorSistema::UsuarioYaRegistrado => "El usuario ya se encuentra registrado y aprobado en el sistema".to_owned(),
+                ErrorSistema::AdminYaRegistrado => "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_owned(),
+                ErrorSistema::UsuarioYaRegistradoEnPeticiones => "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_owned(),
+                ErrorSistema::NoExisteUsuario => "El usuario no existe en el sistema.".to_owned(),
+                ErrorSistema::UsuarioNoAprobado => "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_owned(),
+                ErrorSistema::NoSePoseenPermisos => "Solo el administrador puede realizar esta accion.".to_owned(),
+                ErrorSistema::AccionUnicaDeUsuarios => "Solo los usuarios pueden realizar esta accion.".to_owned(),
+                ErrorSistema::RepresentacionLimiteAlcanzada => "La máxima representación del tipo de dato fue alcanzada. Contacte al administrador para mantenimiento urgente.".to_owned(),
+                ErrorSistema::FechaInicioInvalida(error) => error.to_string(),
+                ErrorSistema::FechaCierreInvalida(error) => error.to_string(),
+                ErrorSistema::FechaInicioPasada => "La fecha de incio de la eleccion es anterior al dia actual.".to_owned(),
+                ErrorSistema::FechaCierrePasada => "La fecha de cierre de la eleccion es anterior al dia actual.".to_owned(),
+                ErrorSistema::FechaCierreAntesInicio => "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned(),
+                ErrorSistema::EleccionInvalida => "La elección ingresada no existe.".to_owned(),
+                ErrorSistema::VotanteYaVoto => "El votante ya ha votado.".to_owned(),
+                ErrorSistema::ErrorDeEleccion(error) => error.to_string()
+            }
+        }
+    }
+
+    #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct ErrorInterfaz {
+        error: ErrorSistema,
+        texto: String
+    }
+
+    impl ErrorInterfaz {
+        fn new(error: ErrorSistema) -> Self
+        {
+            let texto = error.to_string();
+            ErrorInterfaz { error, texto }
+        }
     }
 
     //////////////////////////////// ELECCIONES ////////////////////////////////
@@ -1548,20 +1598,43 @@ mod sistema_votacion {
     #[derive(Debug,PartialEq)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorEleccion
     {
-        NoExisteEleccion { msg: String },
+        NoExisteEleccion,
 
-        EleccionEnProcesoInscripcion { msg: String },
-        EleccionEnProcesoVotacion { msg: String },
-        EleccionCerrada { msg: String },
-        EleccionFinalizada { msg: String },
+        EleccionEnProcesoInscripcion,
+        EleccionEnProcesoVotacion,
+        EleccionCerrada,
+        EleccionFinalizada,
 
-        CandidatoActualmenteAprobado { msg: String },
-        CandidatoNoAprobado { msg: String },
-        CandidatoNoExiste { msg: String },
+        CandidatoActualmenteAprobado,
+        CandidatoEnPendiente,
+        CandidatoNoAprobado,
+        CandidatoNoExiste,
 
-        VotanteActualmenteAprobado { msg: String },
-        VotanteNoAprobado { msg: String },
-        VotanteNoExiste { msg: String },
+        VotanteActualmenteAprobado,
+        VotanteEnPendiente,
+        VotanteNoAprobado,
+        VotanteNoExiste,
+    }
+
+    impl ToString for ErrorEleccion {
+        fn to_string(&self) -> String
+        {
+            match self {
+                ErrorEleccion::NoExisteEleccion => "La id de elección ingresada no existe.".to_owned(),
+                ErrorEleccion::EleccionEnProcesoInscripcion => "La elección ingresada se encuentra en período de inscripción.".to_owned(),
+                ErrorEleccion::EleccionEnProcesoVotacion => "La elección ingresada se encuentra en período de votación.".to_owned(),
+                ErrorEleccion::EleccionCerrada => "La elección ingresada se encuentra cerrada.".to_owned(),
+                ErrorEleccion::EleccionFinalizada => "La eleccion ingresada se encuentra finalizada.".to_owned(),
+                ErrorEleccion::CandidatoActualmenteAprobado => "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned(),
+                ErrorEleccion::CandidatoEnPendiente => "El candidato ingresado ya se encuentra en la cola de peticiones para candidato y debe esperar a ser aprobado".to_owned(),
+                ErrorEleccion::CandidatoNoAprobado => "El candidato ingresado está en espera de aprobación.".to_owned(),
+                ErrorEleccion::CandidatoNoExiste => "El candidato ingresado no existe en la elección.".to_owned(),
+                ErrorEleccion::VotanteActualmenteAprobado => "El votante ingresado ya se encuentra actualmente aprobado.".to_owned(),
+                ErrorEleccion::VotanteEnPendiente => "El votante ingresado ya se encuentra en la cola de peticiones para votante y debe esperar a ser aprobado".to_owned(),
+                ErrorEleccion::VotanteNoAprobado => "El votante ingresado no fue aprobado para esta elección, no tendrá permiso para votar.".to_owned(),
+                ErrorEleccion::VotanteNoExiste => "El votante ingresado no existe en la elección.".to_owned(),
+            }
+        }
     }
 
     //////////////////////////////// VOTOS Y RESULTADOS ////////////////////////////////
@@ -1644,28 +1717,28 @@ mod sistema_votacion {
         fn validar_fecha(&self) -> Result<(), ErrorFecha>
         {
             if self.dia == 0 {
-                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
+                return Err(ErrorFecha::DiaInvalido);
             }
 
             if !match self.mes {
                 1 | 3 | 5 | 7 | 8 | 10 | 12 => self.dia <= 31,
                 4 | 6 | 9 | 11 => self.dia <= 30,
                 2 => self.dia <= if self.es_bisiesto() { 29 } else { 28 },
-                _ => { return Err(ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }); }
+                _ => { return Err(ErrorFecha::MesInvalido); }
             } {
-                return Err(ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() });
+                return Err(ErrorFecha::DiaInvalido);
             }
 
             if self.hora > 23 {
-                return Err( ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() });
+                return Err(ErrorFecha::HoraInvalida);
             }
 
             if self.min > 59 {
-                return Err( ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() });
+                return Err(ErrorFecha::MinInvalido);
             }
 
             if self.seg > 59 {
-                return Err( ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() });
+                return Err(ErrorFecha::SegInvalido);
             }
 
             Ok(())
@@ -1760,13 +1833,26 @@ mod sistema_votacion {
     #[derive(PartialEq, Debug)] #[ink::scale_derive(Encode, Decode, TypeInfo)] #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
     pub enum ErrorFecha
     {
-        DiaInvalido { msg: String },
-        MesInvalido { msg: String },
-        AñoInvalido { msg: String },
-        HoraInvalida { msg: String },
-        MinInvalido { msg: String },
-        SegInvalido { msg: String },
+        DiaInvalido,
+        MesInvalido,
+        HoraInvalida,
+        MinInvalido,
+        SegInvalido,
     }
+
+    impl ToString for ErrorFecha {
+        fn to_string(&self) -> String {
+            match self {
+                ErrorFecha::DiaInvalido => "El día ingresado es invalido.".to_owned(),
+                ErrorFecha::MesInvalido => "El mes ingresado es invalido.".to_owned(),
+                ErrorFecha::HoraInvalida => "La hora ingresada es incorrecta.".to_owned(),
+                ErrorFecha::MinInvalido => "El minuto ingresado es incorrecto.".to_owned(),
+                ErrorFecha::SegInvalido => "El segundo ingresado es incorrecto.".to_owned()
+            }
+        }
+    }
+
+
 
     #[cfg(test)]
     mod tests{
@@ -1780,15 +1866,15 @@ mod sistema_votacion {
             ink::env::test::set_callee::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
-            assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "Los administradores se registran al momento de instanciar el sistema, ó de delegar su rol.".to_string() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::AdminYaRegistrado)), sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(()),sistema.registrarse_en_sistema("julian".to_string(), "12345678".to_string()));
-            assert_eq!(Err(ErrorSistema::UsuarioYaRegistradoEnPeticiones { msg: "El usuario ya se encuentra registrado en la cola de aprobación del sistema, deberá esperar a ser aprobado.".to_string() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede aprobar peticiones de usuarios para registro.".to_string()}),sistema.aprobar_usuario_sistema_priv(accounts.bob));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::UsuarioYaRegistradoEnPeticiones)),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.aprobar_usuario_sistema_priv(accounts.bob));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(()),sistema.aprobar_usuario_sistema_priv(accounts.bob));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-            assert_eq!(Err(ErrorSistema::UsuarioYaRegistrado { msg: "El usuario ya se encuentra registrado y aprobado en el sistema".to_owned() }),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::UsuarioYaRegistrado)),sistema.registrarse_en_sistema_priv("julian".to_string(), "12345678".to_string()));
         }
 
         #[allow(unused)]
@@ -1805,7 +1891,7 @@ mod sistema_votacion {
             sistema.registrarse_en_sistema_priv("alice".to_string(), "22222".to_string());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.charlie);
             sistema.registrarse_en_sistema_priv("charlie".to_string(), "33333".to_string());
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos { msg: "Sólo el administrador puede ver las peticiones de registro.".to_string() }),sistema.get_peticiones_de_registro_sistema_priv());
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.get_peticiones_de_registro_sistema_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(sistema.peticiones_registro.clone()),sistema.get_peticiones_de_registro_sistema_priv());
         }
@@ -1818,7 +1904,7 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
             assert_eq!(Ok(()),sistema.delegar_admin_priv(accounts.bob, "bob".to_string(), "12345".to_string()));
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede delegarle su rol a otra cuenta.".to_string()}),sistema.delegar_admin_priv(accounts.bob, "bob".to_string(), "12345".to_string()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.delegar_admin_priv(accounts.bob, "bob".to_string(), "12345".to_string()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(()),sistema.delegar_admin_priv(accounts.django, "tobias".to_string(), "43107333".to_string()));
         }
@@ -1833,24 +1919,24 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
-            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error: ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 0, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error:ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err( ErrorSistema::FechaInicioInvalida{error:ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaInicioInvalida{error: ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err( ErrorSistema::FechaInicioInvalida{error:ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error: ErrorFecha::DiaInvalido { msg: "El día ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 32, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error:ErrorFecha::MesInvalido { msg: "El mes ingresado es invalido.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err( ErrorSistema::FechaCierreInvalida{error:ErrorFecha::HoraInvalida { msg: "La hora ingresada es incorrecta.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaCierreInvalida{error: ErrorFecha::MinInvalido { msg: "El minuto ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }));
-            assert_eq!(Err( ErrorSistema::FechaCierreInvalida{error:ErrorFecha::SegInvalido { msg: "El segundo ingresado es incorrecto.".to_owned() }}),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }));
-            assert_eq!(Err(ErrorSistema::FechaInicioPasada{ msg: "La fecha de incio de la eleccion es anterior al dia actual.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 1600, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
-            assert_eq!(Err(ErrorSistema::FechaCierreAntesInicio { msg: "La fecha de cierre de la eleccion es anterior a la fecha de inicio.".to_owned() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2000, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(ErrorFecha::DiaInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 0, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(ErrorFecha::MesInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(ErrorFecha::HoraInvalida))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(ErrorFecha::MinInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioInvalida(ErrorFecha::SegInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(ErrorFecha::DiaInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 32, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(ErrorFecha::MesInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 14, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(ErrorFecha::HoraInvalida))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 60, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(ErrorFecha::MinInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 70, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreInvalida(ErrorFecha::SegInvalido))),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 99 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaInicioPasada)),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 1600, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::FechaCierreAntesInicio)),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 1, mes: 1, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2000, hora: 20, min: 30, seg: 00 }));
             assert_eq!(Ok(()),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos { msg:"Sólo el administrador puede crear nuevas elecciones.".to_string()  }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
             sistema.elecciones_conteo_id= 18446744073709551615;
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
-            assert_eq!(Err(ErrorSistema::RepresentacionLimiteAlcanzada { msg: "La máxima representación del tipo de dato fue alcanzada. Mantenimiento urgente.".to_string() }),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::RepresentacionLimiteAlcanzada)),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
         }
 
         #[allow(unused)]
@@ -1866,13 +1952,13 @@ mod sistema_votacion {
             assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
-            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado { msg: "Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string() }),sistema.get_elecciones_actuales_priv());
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::UsuarioNoAprobado)),sistema.get_elecciones_actuales_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             sistema.aprobar_usuario_sistema_priv(accounts.bob);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(sistema.clonar_elecciones_actuales_a_interfaz(0)),sistema.get_elecciones_actuales_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
-            assert_eq!(Err(ErrorSistema::NoExisteUsuario { msg: "Usted no se encuentra registrado en el sistema.".to_string() }),sistema.get_elecciones_actuales_priv());
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoExisteUsuario)),sistema.get_elecciones_actuales_priv());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             sistema.finalizar_y_contar_eleccion_priv(0);
@@ -1891,30 +1977,30 @@ mod sistema_votacion {
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             let mut sistema=SistemaVotacion::new("tobias".to_string(), "43107333".to_string());
             sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 });
-            assert_eq!(Err(ErrorSistema::AccionUnicaDeUsuarios{msg:"Sólo los usuarios pueden registrarse a las elecciones.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::AccionUnicaDeUsuarios)),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
-            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoExisteUsuario)),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             sistema.registrarse_en_sistema_priv("bob".to_string(), "12345".to_string());
-            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::UsuarioNoAprobado)),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             sistema.aprobar_usuario_sistema(accounts.bob);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede ver la cola de candidatos pendientes para las elecciones.".to_owned()}),sistema.get_candidatos_pendientes_priv(0));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.get_candidatos_pendientes_priv(0));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
-            assert_eq!(Err(ErrorSistema::NoExisteUsuario{msg:"Usted no se encuentra registrado en el sistema.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoExisteUsuario)),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
-            assert_eq!(Err(ErrorSistema::UsuarioNoAprobado{msg:"Usted se encuentra dentro de la cola de peticiones del sistema, debe esperar a ser aceptado.".to_string()}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::UsuarioNoAprobado)),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(vec![Usuario::new(accounts.bob,"bob".to_string(),"12345".to_string())]),sistema.get_candidatos_pendientes_priv(0));
             sistema.aprobar_usuario_sistema(accounts.alice);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::NoExisteEleccion { msg: "La id de elección ingresada no existe.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Votante));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::NoExisteEleccion))),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id, Rol::Votante));
             assert_eq!(Ok(()),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
-            assert_eq!(Err(ErrorSistema::NoSePoseenPermisos{msg:"Sólo el administrador puede ver la cola de votantes pendientes para las elecciones.".to_owned()}),sistema.get_votantes_pendientes_priv(0));
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion {error: ErrorEleccion::VotanteActualmenteAprobado { msg:"Usted ya se encuentra en la cola de peticiones para votante, debe esperar a ser aprobado.".to_owned()}}),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::NoSePoseenPermisos)),sistema.get_votantes_pendientes_priv(0));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteEnPendiente))),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_votantes_pendientes_priv(0));
         }
@@ -1938,9 +2024,9 @@ mod sistema_votacion {
             sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Candidato);
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(()),sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned()));
-            assert_eq!(Err((ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::CandidatoActualmenteAprobado { msg: "El candidato ingresado ya se encuentra actualmente aprobado.".to_owned() } })),sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoActualmenteAprobado))),sistema.aprobar_candidato_eleccion(sistema.elecciones_conteo_id-1, "12345".to_owned()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "Usted ya se encuentra aprobado para candidato.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::CandidatoActualmenteAprobado))),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:1,mes:1,año:2000,hora:00,min:00,seg:00}.to_timestamp());
             sistema.registrarse_en_sistema_priv("alice".to_string(), "11111".to_string());
@@ -1951,7 +2037,7 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             assert_eq!(Ok(()),sistema.aprobar_votante_eleccion(sistema.elecciones_conteo_id-1, "11111".to_owned()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteActualmenteAprobado { msg: "Usted ya se encuentra aprobado para votante.".to_owned() } }),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteActualmenteAprobado))),sistema.registrarse_a_eleccion_priv(sistema.elecciones_conteo_id-1, Rol::Votante));
             
         }
 
@@ -1984,20 +2070,20 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             sistema.aprobar_votante_eleccion(sistema.elecciones_conteo_id-1, "11111".to_owned());
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.alice);
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionEnProcesoInscripcion { msg: "La elección ingresada se encuentra en período de inscripción.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionEnProcesoInscripcion))),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:12,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Ok(()),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
-            assert_eq!(Err(ErrorSistema::VotanteYaVoto { msg: "El votante ya ha votado.".to_owned() }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::VotanteYaVoto)),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::EleccionCerrada { msg: "La elección ingresada se encuentra cerrada.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::EleccionCerrada))),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.bob);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:12,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
-            assert_eq!(Err(ErrorSistema::ErrorDeEleccion { error: ErrorEleccion::VotanteNoExiste { msg: "Usted nunca se registró a esta elección.".to_owned() } }),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::ErrorDeEleccion(ErrorEleccion::VotanteNoExiste))),sistema.votar_eleccion_priv(sistema.elecciones_conteo_id-1, "12345".to_owned()));
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Ok(CandidatoVotos{candidato_nombre:"bob".to_string(), candidato_dni:"12345".to_string(), votos_recaudados:1}),sistema.finalizar_y_contar_eleccion_priv(0));
             assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
-            assert_eq!(Err(ErrorSistema::EleccionInvalida{msg: "La elección ingresada no existe.".to_owned()}),sistema.get_elecciones_terminadas_x(4));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida)),sistema.get_elecciones_terminadas_x(4));
         }
     }
 

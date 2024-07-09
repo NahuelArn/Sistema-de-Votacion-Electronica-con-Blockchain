@@ -6,7 +6,8 @@ mod reporte {
     use sistema_votacion::Usuario;
     use ink::prelude::string::String;
     use sistema_votacion::CandidatoVotos;
-    use ink::prelude::vec::Vec; // Importa Vec // Importa la macro vec!
+    use sistema_votacion::Eleccion;
+    use ink::prelude::vec::Vec; 
     use sistema_votacion::ErrorSistema;
     use ink::prelude::borrow::ToOwned;
     #[ink(storage)]
@@ -65,26 +66,23 @@ mod reporte {
         /// 
         /// La función puede retornar errores en caso de overflow al calcular los votos emitidos o el porcentaje de participación.
         #[ink(message)]
-        pub fn reporte_participacion(&mut self) -> Vec<Informe> {
-            let mut cant_emit: u128;
-            let mut cant_total: u128;
-            let mut informes: Vec<Informe> = Vec::new();
+        pub fn reporte_participacion(&mut self, id:u64) -> Result<Informe, ErrorSistema> {
+            let eleccion: Vec<Eleccion> = self.sistema.get_elecciones_finiquitadas();
+            let eleccion_buscada = eleccion.iter().find(|eleccion| eleccion.get_id() == id).ok_or(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()})?;
             
-            for eleccion in self.sistema.get_elecciones_finiquitadas().iter() {
-                cant_emit = 0;
-                for votos in eleccion.get_eleccion_votos().iter() {
-                    cant_emit = cant_emit.checked_add(votos.get_votos_recaudados() as u128)
-                        .expect("Error: Overflow en la suma de votos.");
-                }
-                cant_total = eleccion.votantes_aprobados.len() as u128;
-                let porcentaje = cant_emit.checked_mul(100)
-                    .expect("Error: Overflow en la multiplicación.")
-                    .checked_div(cant_total)
-                    .expect("Error: División por cero.");
-                let informe = Informe::new(eleccion.get_id(), eleccion.get_cargo(), cant_emit as u64, cant_total as u64, porcentaje);
-                informes.push(informe);
+            let mut cant_emit: u128 = 0;
+            for votos in eleccion_buscada.get_eleccion_votos().iter(){
+                cant_emit = cant_emit.checked_add(votos.get_votos_recaudados() as u128).expect("Error: Overflow en la suma de votos.");
             }
-            informes
+            // Calcular la cantidad de votos emitidos
+            let cant_total = eleccion_buscada.get_eleccion_votos().len() as u128;
+            if cant_total == 0 || cant_emit == 0{
+                return Err(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()});
+            }
+            let mut porcentaje: u128 = cant_emit.checked_mul(100).ok_or(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()})?;
+            porcentaje = porcentaje.checked_div(cant_total).ok_or(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()})?;
+            let informe = Informe::new(eleccion_buscada.get_id(), eleccion_buscada.get_cargo(), cant_emit as u64, cant_total as u64, porcentaje);
+            Ok(informe)
         }
 
         /// PERMITE RECUPERAR UN REPORTE DE RESULTADOS DE LAS ELECCIONES FINALIZADAS
@@ -100,20 +98,23 @@ mod reporte {
         /// # Errores
         /// 
         /// La función puede retornar un error si no se pueden obtener los resultados de las elecciones.
+        
         #[ink(message)]
-        pub fn reporte_resultado(&mut self) -> Result<Vec<CandidatoVotos>, ErrorSistema> {
+        pub fn reporte_resultado(&mut self, id: u64) -> Result<Vec<CandidatoVotos>, ErrorSistema> {
             let mut votos: Vec<CandidatoVotos> = Vec::new();
-            for eleccion in self.sistema.get_elecciones_finiquitadas().iter() {
-                for voto in eleccion.get_eleccion_votos().iter() {
-                    votos.push(voto.clone());
-                }
+            let eleccion: Vec<Eleccion> = self.sistema.get_elecciones_finiquitadas();
+            let eleccion_buscada = eleccion.iter().find(|eleccion| eleccion.get_id() == id).ok_or(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()})?;
+            
+            for voto in eleccion_buscada.get_eleccion_votos().iter() {
+                votos.push(voto.clone());
             }
+
             if votos.is_empty() {
                 return Err(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()});
             }
             votos.sort_by(|a, b| b.get_votos_recaudados().cmp(&a.get_votos_recaudados()));
             Ok(votos)
-        }
+        }       
     }
 
     #[derive(Clone, Debug)]

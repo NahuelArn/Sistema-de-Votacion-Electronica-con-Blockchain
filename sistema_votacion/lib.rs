@@ -1589,9 +1589,7 @@ mod sistema_votacion {
         pub fn get_eleccion_votos(&self) -> Vec<CandidatoVotos> {
             self.votos.clone()
         }
-        // pub fn get_dimf_votantes_aprobados(&self)-> usize{
-        //     self.votantes_aprobados.len()
-        // }
+        
         pub fn get_votantes_aprobados(&self) -> Vec<Usuario> {
             self.votantes_aprobados.clone()
         }
@@ -2110,8 +2108,12 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Ok(CandidatoVotos{candidato_nombre:"bob".to_string(), candidato_dni:"12345".to_string(), votos_recaudados:1}),sistema.finalizar_y_contar_eleccion_priv(0));
-            // assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
-            // assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida)),sistema.get_elecciones_terminadas_x(4));
+            assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
+            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida)),sistema.get_elecciones_terminadas_x(4));
+            let mut x=sistema.finalizar_y_contar_elccion_priv(0).expect("");
+            x.set_votos_recaudados(12);
+            assert_eq!(12,x.votos_recaudados);
+            sistema.eleccion
         }
     }
 

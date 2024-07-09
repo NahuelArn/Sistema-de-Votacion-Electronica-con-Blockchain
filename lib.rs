@@ -48,8 +48,23 @@ mod reporte {
         /// 
         /// La función puede retornar un error si el ID de la elección no es válido.
         #[ink(message)]
-        pub fn reporte_registro_de_votantes(&mut self, id: u64) -> Result<Vec<Usuario>, ErrorSistema> {
-            self.sistema.get_elecciones_terminadas_x(id)
+        pub fn reporte_registrados_aprobados(&mut self, id: u64) -> Result<ReporteDetalleVotante, ErrorSistema>{
+            let eleccion_buscada: Eleccion = match self.sistema.get_elecciones_terminadas_especifica(id) {
+                Ok(eleccion) => eleccion,
+                Err(e) => return Err(e),
+            };
+            
+
+            let vec_votantes_aprobados = eleccion_buscada.get_votantes_aprobados();
+            let vec_votantes_registrados = eleccion_buscada.get_votantes_registrados();
+            // Crear el informe detallado de votantes registrados y aprobados
+            let informe_votantes = ReporteDetalleVotante::new(
+                id,
+                vec_votantes_registrados,
+                vec_votantes_aprobados,
+            );
+
+            Ok(informe_votantes)
         }
 
         /// PERMITE RECUPERAR UN REPORTE DE PARTICIPACIÓN EN LAS ELECCIONES FINALIZADAS
@@ -75,7 +90,7 @@ mod reporte {
                 cant_emit = cant_emit.checked_add(votos.get_votos_recaudados() as u128).expect("Error: Overflow en la suma de votos.");
             }
             // Calcular la cantidad de votos emitidos
-            let cant_total = eleccion_buscada.get_eleccion_votos().len() as u128;
+            let cant_total = eleccion_buscada.get_votantes_aprobados().len() as u128;
             if cant_total == 0 || cant_emit == 0{
                 return Err(ErrorSistema::ResultadosNoDisponibles{msg: "No hay resultados disponibles".to_owned()});
             }
@@ -152,4 +167,35 @@ mod reporte {
             }
         }
     }
+    #[derive(Clone, Debug)]
+    #[ink::scale_derive(Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "std", derive(ink::storage::traits::StorageLayout))]
+    pub struct ReporteDetalleVotante{
+        id_elecciones: u64,
+        votantes_registrados: Vec<Usuario>,
+        votantes_aprobados: Vec<Usuario>,
+    }
+    impl ReporteDetalleVotante{
+        /// PERMITE CREAR UN NUEVO `REPORTE DETALLE VOTANTE`
+        ///     
+        /// # Uso
+        ///     
+        /// La función recibe los parámetros `id_elecciones`, `votantes_registrados` y `votantes_aprobados` para inicializar un `ReporteDetalleVotante`.
+        /// 
+        /// # Funcionalidad
+        /// 
+        /// La función inicializa un nuevo `ReporteDetalleVotante` con los valores seteados.
+        /// 
+        /// # Errores
+        /// 
+        /// No se esperan errores en la inicialización.
+        fn new(id_elecciones: u64, votantes_registrados: Vec<Usuario>, votantes_aprobados: Vec<Usuario>) -> Self{
+            ReporteDetalleVotante{
+                id_elecciones,
+                votantes_registrados,
+                votantes_aprobados,
+            }
+        }
+    }
+
 }

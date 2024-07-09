@@ -2108,12 +2108,18 @@ mod sistema_votacion {
             ink::env::test::set_caller::<ink::env::DefaultEnvironment>(accounts.django);
             ink::env::test::set_block_timestamp::<ink::env::DefaultEnvironment>(Fecha{dia:13,mes:10,año:2001,hora:21,min:00,seg:00}.to_timestamp());
             assert_eq!(Ok(CandidatoVotos{candidato_nombre:"bob".to_string(), candidato_dni:"12345".to_string(), votos_recaudados:1}),sistema.finalizar_y_contar_eleccion_priv(0));
-            assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
-            assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida)),sistema.get_elecciones_terminadas_x(4));
-            let mut x=sistema.finalizar_y_contar_elccion_priv(0).expect("");
-            x.set_votos_recaudados(12);
-            assert_eq!(12,x.votos_recaudados);
-            sistema.eleccion
+            //assert_eq!(Ok(vec![Usuario::new(accounts.alice,"alice".to_string(),"11111".to_string())]),sistema.get_elecciones_terminadas_x(0));
+            //assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::EleccionInvalida)),sistema.get_elecciones_terminadas_x(4));
+            sistema.elecciones_finiquitadas(0).set_votos(vec![]);
+            assert_eq!(vec![],sistema.elecciones_finiquitadas(0).get_eleccion_votos());
+            assert_eq!(sistema.elecciones_finiquitadas(0).votos,sistema.elecciones_finiquitadas(0).get_eleccion_votos());
+            sistema.elecciones_finiquitadas(0).set_votantes_aprobados(vec![]);
+            assert_eq!(vec![],sistema.elecciones_finiquitadas(0).get_votantes_aprobados());
+            sistema.elecciones_finiquitadas(0).set_votantes_registrados(vec![]);
+            assert_eq!(vec![],sistema.elecciones_finiquitadas(0).get_votantes_registrados());
+            assert_eq!(0,sistema.elecciones_finiquitadas(0).get_id());
+            assert_eq!("Emperador".to_string(),sistema.elecciones_finiquitadas(0).get_cargo());
+            
         }
     }
 

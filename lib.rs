@@ -555,15 +555,18 @@ mod reporte {
             //Resultado informe con vecs vacios
             let sistema1 = SistemaVotacionFakeA::new();
             let mut reporte = Reporte::new_fake(SistemaMockeado::A(sistema1));
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Ok(ReporteDetalleVotante::new(0, Vec::new(), Vec::new())), reporte.reporte_registrados_aprobados(0));
             //Resultado informe con vecs con datos
             let sistema2 = SistemaVotacionFakeB::new();
             reporte.set_sistema(SistemaMockeado::B(sistema2));
             let esperado = ReporteDetalleVotante::new(0,vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned()), Usuario::new(AccountId::from([0x2; 32]), "Juan".to_owned(), "222".to_owned())] , vec![Usuario::new(AccountId::from([0x3; 32]), "Lucas".to_owned(), "333".to_owned())]);
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Ok(esperado), reporte.reporte_registrados_aprobados(0));
             //Resultado informe con error
             let sistema3 = SistemaVotacionFakeC::new();
             reporte.set_sistema(SistemaMockeado::C(sistema3));
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Err(ErrorSistema::EleccionInvalida), reporte.reporte_registrados_aprobados(0));
 
         }
@@ -575,14 +578,17 @@ mod reporte {
             let mut reporte = Reporte::new_fake(SistemaMockeado::D(sistema1));
             let elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
             let esperado = Informe::new(elec.get_id(), elec.get_cargo(), 3, 4, 75);
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Ok(esperado), reporte.reporte_participacion(0));
             //Resultado error por eleccion inexistente
             let sistema2 = SistemaVotacionFakeE::new();
             reporte.set_sistema(SistemaMockeado::E(sistema2));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_participacion(0));
             //Resultado error por division por 0
             let sistema3 = SistemaVotacionFakeF::new();
             reporte.set_sistema(SistemaMockeado::F(sistema3));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_participacion(0));
         }
 
@@ -600,14 +606,17 @@ mod reporte {
             esperado[1].set_votos_recaudados(5);
             esperado[0].set_votos_recaudados(19);
             esperado[2].set_votos_recaudados(3);
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Ok(esperado), reporte.reporte_resultado(0));
             //Resultado error por inexistencia de eleccion
             let sistema2 = SistemaVotacionFakeH::new();
             reporte.set_sistema(SistemaMockeado::H(sistema2));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
             //Resultado error por falta de votos
             let sistema3 = SistemaVotacionFakeI::new();
             reporte.set_sistema(SistemaMockeado::I(sistema3));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
         }
     }

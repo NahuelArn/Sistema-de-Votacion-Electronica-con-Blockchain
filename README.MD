@@ -117,6 +117,8 @@
         probadas, es decir, funcionales.
       </li>
       <li>Testnet: Rococo.</li>
+      <li>Adrres contrato Reporte: 0x777a7c782b33e6bad6e3d6c0cce906c8471819e7e687bc84b556b5b2df4901e7 </li>
+      <li>Adrres contrato Sistema Votacion: 0x716a3f381346fdeeafa18aec3bf1e23476a84df9bb7ab6763558b5d2f4bf0588 </li>
     </ul>
     <h2>Instalación</h2>
     <ol>

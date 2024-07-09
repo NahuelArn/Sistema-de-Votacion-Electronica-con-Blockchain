@@ -1548,7 +1548,7 @@ mod sistema_votacion {
     }
 
     impl Eleccion {
-        fn new(
+        pub fn new(
             eleccion_id: u64,
             cargo: String,
             fecha_inicio: Timestamp,
@@ -1603,6 +1603,17 @@ mod sistema_votacion {
         }
         pub fn get_cargo(&self) -> String {
             self.cargo.clone()
+        }
+         pub fn set_votantes_registrados(&mut self, usuarios: Vec<Usuario>){
+            self.peticiones_votantes = usuarios;
+        }
+
+        pub fn set_votantes_aprobados(&mut self, usuarios: Vec<Usuario>){
+            self.votantes_aprobados = usuarios;
+        }
+
+        pub fn set_votos(&mut self, votos: Vec<CandidatoVotos>){
+            self.votos = votos;
         }
     }
 
@@ -1665,7 +1676,7 @@ mod sistema_votacion {
     }
 
     impl CandidatoVotos {
-        fn new(candidato_nombre: String, candidato_dni: String) -> Self {
+        pub fn new(candidato_nombre: String, candidato_dni: String) -> Self {
             CandidatoVotos {
                 candidato_nombre,
                 candidato_dni,
@@ -1675,7 +1686,9 @@ mod sistema_votacion {
         pub fn get_votos_recaudados(&self) -> u64 {
             self.votos_recaudados
         }
-
+        pub fn set_votos_recaudados(&mut self, cantidad: u64){
+            self.votos_recaudados = cantidad;
+        }
     }
 
     //////////////////////////////// USUARIOS ////////////////////////////////
@@ -1694,7 +1707,7 @@ mod sistema_votacion {
     }
 
     impl Usuario {
-        fn new(account_id: AccountId, nombre: String, dni: String) -> Self {
+        pub fn new(account_id: AccountId, nombre: String, dni: String) -> Self {
             Usuario {
                 account_id,
                 nombre,
@@ -1711,6 +1724,10 @@ mod sistema_votacion {
 
     impl Fecha 
     {
+        pub fn new(dia: u8, mes: u8, año: u32, hora: u8, min: u8, seg: u8) -> Self
+        { 
+            Fecha { dia, mes, año, hora, min, seg }
+        }
         ///VALIDA QUE LA FECHA INGRESADA EN NUMEROS SEA UNA FECHA CORRECTA Y EXISTENTE, TENIENDO EN CUENTA AÑOS BISIESTOS
         ///
         ///#Uso

@@ -6,7 +6,8 @@ mod reporte {
     use ink::{prelude::string::String};
     use sistema_votacion::CandidatoVotos;
     use ink::prelude::vec::Vec; // Importa Vec // Importa la macro vec!
-    
+    use ink::prelude::vec;
+    use ink::prelude::borrow::ToOwned;
     trait Funciones{
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>;
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>;
@@ -21,11 +22,11 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeA{ //Caso de reporte de votantes aprobados sin votantes aprobados
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            Vec::new()
         } 
     }
 
@@ -46,14 +47,14 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeB{ //Caso de reporte de votantes aprobados con votantes aprobados
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            let mut elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
-            elec.set_votantes_registrados(vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_string(), "111".to_string()), Usuario::new(AccountId::from([0x2; 32]), "Juan".to_string(), "222".to_string())]);
-            elec.set_votantes_aprobados(vec![Usuario::new(AccountId::from([0x3; 32]), "Lucas".to_string(), "333".to_string())]);
-            return Ok(elec);
+            let mut elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            elec.set_votantes_registrados(vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned()), Usuario::new(AccountId::from([0x2; 32]), "Juan".to_owned(), "222".to_owned())]);
+            elec.set_votantes_aprobados(vec![Usuario::new(AccountId::from([0x3; 32]), "Lucas".to_owned(), "333".to_owned())]);
+            Ok(elec)
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            Vec::new()
         } 
     }
 
@@ -73,11 +74,11 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeC{ //Caso de reporte de votantes aprobados error
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Err(ErrorSistema::EleccionInvalida);
+            Err(ErrorSistema::EleccionInvalida)
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            Vec::new()
         } 
     }
 
@@ -97,26 +98,26 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeD{ //Caso de reporte de participacion retorna informe
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            let mut elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            let mut elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
             let usuarios = vec![
-                Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_string(), "111".to_string()), 
-                Usuario::new(AccountId::from([0x2; 32]), "Juan".to_string(), "222".to_string()), 
-                Usuario::new(AccountId::from([0x3; 32]), "Lucia".to_string(), "333".to_string()), 
-                Usuario::new(AccountId::from([0x4; 32]), "Franco".to_string(), "444".to_string())
+                Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned()), 
+                Usuario::new(AccountId::from([0x2; 32]), "Juan".to_owned(), "222".to_owned()), 
+                Usuario::new(AccountId::from([0x3; 32]), "Lucia".to_owned(), "333".to_owned()), 
+                Usuario::new(AccountId::from([0x4; 32]), "Franco".to_owned(), "444".to_owned())
             ];
             elec.set_votantes_aprobados(usuarios);
 
-            let mut votos = vec![CandidatoVotos::new("Jorge".to_string(), "999".to_string()), CandidatoVotos::new("Mara".to_string(), "888".to_string())];
+            let mut votos = vec![CandidatoVotos::new("Jorge".to_owned(), "999".to_owned()), CandidatoVotos::new("Mara".to_owned(), "888".to_owned())];
             votos[0].set_votos_recaudados(2);
             votos[1].set_votos_recaudados(1);
 
             elec.set_votos(votos);
 
-            return vec![elec];
+            vec![elec]
         } 
     }
 
@@ -136,11 +137,11 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeE{ //Caso de reporte 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            Vec::new()
         } 
     }
 
@@ -160,19 +161,19 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeF{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            let mut elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            let mut elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
 
-            let mut votos = vec![CandidatoVotos::new("Jorge".to_string(), "999".to_string()), CandidatoVotos::new("Mara".to_string(), "888".to_string())];
+            let mut votos = vec![CandidatoVotos::new("Jorge".to_owned(), "999".to_owned()), CandidatoVotos::new("Mara".to_owned(), "888".to_owned())];
             votos[0].set_votos_recaudados(2);
             votos[1].set_votos_recaudados(1);
 
             elec.set_votos(votos);
 
-            return vec![elec];
+            vec![elec]
         } 
     }
 
@@ -192,16 +193,16 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeG{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            let mut elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            let mut elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
 
             let mut votos = vec![
-                CandidatoVotos::new("Jorge".to_string(), "999".to_string()), 
-                CandidatoVotos::new("Mara".to_string(), "888".to_string()), 
-                CandidatoVotos::new("Esteban".to_string(), "777".to_string())
+                CandidatoVotos::new("Jorge".to_owned(), "999".to_owned()), 
+                CandidatoVotos::new("Mara".to_owned(), "888".to_owned()), 
+                CandidatoVotos::new("Esteban".to_owned(), "777".to_owned())
             ];
             votos[0].set_votos_recaudados(5);
             votos[1].set_votos_recaudados(19);
@@ -209,7 +210,7 @@ mod reporte {
 
             elec.set_votos(votos);
 
-            return vec![elec];
+            vec![elec]
         } 
     }
 
@@ -229,11 +230,11 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeH{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            return Vec::new();
+            Vec::new()
         } 
     }
 
@@ -253,13 +254,13 @@ mod reporte {
 
     impl Funciones for SistemaVotacionFakeI{ //Caso de reporte de 
         fn get_elecciones_terminadas_especifica(&self, id: u64) -> Result<Eleccion, ErrorSistema>{
-            return Ok(Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)));
+            Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1)))
         }
 
         fn get_elecciones_finiquitadas(&self) -> Vec<Eleccion>{
-            let elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            let elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
 
-            return vec![elec];
+            vec![elec]
         } 
     }
 
@@ -554,15 +555,18 @@ mod reporte {
             //Resultado informe con vecs vacios
             let sistema1 = SistemaVotacionFakeA::new();
             let mut reporte = Reporte::new_fake(SistemaMockeado::A(sistema1));
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Ok(ReporteDetalleVotante::new(0, Vec::new(), Vec::new())), reporte.reporte_registrados_aprobados(0));
             //Resultado informe con vecs con datos
             let sistema2 = SistemaVotacionFakeB::new();
             reporte.set_sistema(SistemaMockeado::B(sistema2));
-            let esperado = ReporteDetalleVotante::new(0,vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_string(), "111".to_string()), Usuario::new(AccountId::from([0x2; 32]), "Juan".to_string(), "222".to_string())] , vec![Usuario::new(AccountId::from([0x3; 32]), "Lucas".to_string(), "333".to_string())]);
+            let esperado = ReporteDetalleVotante::new(0,vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned()), Usuario::new(AccountId::from([0x2; 32]), "Juan".to_owned(), "222".to_owned())] , vec![Usuario::new(AccountId::from([0x3; 32]), "Lucas".to_owned(), "333".to_owned())]);
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Ok(esperado), reporte.reporte_registrados_aprobados(0));
             //Resultado informe con error
             let sistema3 = SistemaVotacionFakeC::new();
             reporte.set_sistema(SistemaMockeado::C(sistema3));
+            assert_eq!(reporte.sistema.get_elecciones_finiquitadas(), Vec::new());
             assert_eq!(Err(ErrorSistema::EleccionInvalida), reporte.reporte_registrados_aprobados(0));
 
         }
@@ -572,16 +576,19 @@ mod reporte {
             //Resultado informe
             let sistema1 = SistemaVotacionFakeD::new();
             let mut reporte = Reporte::new_fake(SistemaMockeado::D(sistema1));
-            let elec = Eleccion::new(0, "Un cargo".to_string(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
+            let elec = Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1));
             let esperado = Informe::new(elec.get_id(), elec.get_cargo(), 3, 4, 75);
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Ok(esperado), reporte.reporte_participacion(0));
             //Resultado error por eleccion inexistente
             let sistema2 = SistemaVotacionFakeE::new();
             reporte.set_sistema(SistemaMockeado::E(sistema2));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_participacion(0));
             //Resultado error por division por 0
             let sistema3 = SistemaVotacionFakeF::new();
             reporte.set_sistema(SistemaMockeado::F(sistema3));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_participacion(0));
         }
 
@@ -592,21 +599,24 @@ mod reporte {
             let mut reporte = Reporte::new_fake(SistemaMockeado::G(sistema1));
             
             let mut esperado = vec![ 
-                CandidatoVotos::new("Mara".to_string(), "888".to_string()), 
-                CandidatoVotos::new("Jorge".to_string(), "999".to_string()),
-                CandidatoVotos::new("Esteban".to_string(), "777".to_string())
+                CandidatoVotos::new("Mara".to_owned(), "888".to_owned()), 
+                CandidatoVotos::new("Jorge".to_owned(), "999".to_owned()),
+                CandidatoVotos::new("Esteban".to_owned(), "777".to_owned())
             ];
             esperado[1].set_votos_recaudados(5);
             esperado[0].set_votos_recaudados(19);
             esperado[2].set_votos_recaudados(3);
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Ok(esperado), reporte.reporte_resultado(0));
             //Resultado error por inexistencia de eleccion
             let sistema2 = SistemaVotacionFakeH::new();
             reporte.set_sistema(SistemaMockeado::H(sistema2));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
             //Resultado error por falta de votos
             let sistema3 = SistemaVotacionFakeI::new();
             reporte.set_sistema(SistemaMockeado::I(sistema3));
+            assert_eq!(Ok(Eleccion::new(0, "Un cargo".to_owned(), Timestamp::default(), Timestamp::default(), Fecha::new(1,1,1,1,1,1), Fecha::new(1,1,1,1,1,1))), reporte.sistema.get_elecciones_terminadas_especifica(0));
             assert_eq!(Err(ErrorSistema::ResultadosNoDisponibles), reporte.reporte_resultado(0));
         }
     }

@@ -1967,6 +1967,17 @@ mod sistema_votacion {
             assert_eq!(Err(ErrorInterfaz::new(ErrorSistema::RepresentacionLimiteAlcanzada)),sistema.crear_nueva_eleccion_priv("Emperador".to_string(), Fecha { dia: 12, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }, Fecha { dia: 13, mes: 10, año: 2001, hora: 20, min: 30, seg: 00 }));
         }
 
+        #[ink::test]
+        fn test_setters_y_getters_elecciones(){
+            let mut elec = Eleccion::new(0, String::from("Un cargo"), Timestamp::default(), Timestamp::default(), Fecha::new(1, 1, 1, 1, 1, 1), Fecha::new(1, 1, 1, 1, 1, 1));
+            //Settear votantes aprobados
+            elec.set_votantes_aprobados(vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned())]);
+            assert_eq!(elec.get_votantes_aprobados(), vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned())]);
+            //Settear votantes registrados
+            elec.set_votantes_registrados(vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned())]);
+            assert_eq!(elec.get_votantes_registrados(), vec![Usuario::new(AccountId::from([0x1; 32]), "Pepe".to_owned(), "111".to_owned())]);
+        }
+
         #[allow(unused)]
         #[ink::test]
         fn test_get_elecciones()
